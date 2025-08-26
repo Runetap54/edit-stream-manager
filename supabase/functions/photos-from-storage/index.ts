@@ -50,7 +50,8 @@ async function logError(params: {
 }
 
 function photosProjectPrefix(uid: string, project: string) {
-  return `users/${uid}/${photosRoot}/${project}/`;
+  // Updated to match user's manual reorganization - Photos at root level
+  return `${photosRoot}/${project}/`;
 }
 
 async function listPhotos(prefix: string) {

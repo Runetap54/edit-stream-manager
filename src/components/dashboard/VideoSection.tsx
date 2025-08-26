@@ -2,9 +2,16 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Video, RotateCcw, Trash2, Download, Play } from "lucide-react";
+
+interface StorageScene {
+  key: string;
+  url: string;
+  name: string;
+}
 
 interface Scene {
   id: string;
@@ -38,12 +45,14 @@ export function VideoSection({
   selectedEnd,
   selectedShotType,
 }: VideoSectionProps) {
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [storageScenes, setStorageScenes] = useState<StorageScene[]>([]);
+  const [dbScenes, setDbScenes] = useState<Scene[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (folder) {
-      loadScenes();
+      loadStorageScenes();
+      loadDbScenes();
       
       // Set up real-time subscription for scene updates
       const channel = supabase
@@ -57,7 +66,7 @@ export function VideoSection({
             filter: `folder=eq.${folder}`
           },
           () => {
-            loadScenes();
+            loadDbScenes();
           }
         )
         .on(
@@ -68,7 +77,7 @@ export function VideoSection({
             table: 'scene_versions'
           },
           () => {
-            loadScenes();
+            loadDbScenes();
           }
         )
         .subscribe();
@@ -79,10 +88,47 @@ export function VideoSection({
     }
   }, [folder]);
 
-  const loadScenes = async () => {
+  const loadStorageScenes = async () => {
     if (!folder) return;
     
     setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Authentication required");
+        return;
+      }
+
+      const response = await supabase.functions.invoke('scenes-from-storage', {
+        method: 'GET',
+        body: null,
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.error) {
+        console.error("Error loading scenes from storage:", response.error);
+        toast.error(`Failed to load scenes: ${response.error.message}`);
+        return;
+      }
+
+      const { data } = response.data || {};
+      if (data?.scenes) {
+        setStorageScenes(data.scenes);
+      }
+    } catch (error) {
+      console.error("Error loading storage scenes:", error);
+      toast.error("Failed to load scenes from storage");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDbScenes = async () => {
+    if (!folder) return;
+    
     try {
       const { data: scenesData, error } = await supabase
         .from("scenes")
@@ -95,8 +141,7 @@ export function VideoSection({
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Error loading scenes:", error);
-        toast.error("Failed to load scenes");
+        console.error("Error loading DB scenes:", error);
         return;
       }
 
@@ -105,12 +150,9 @@ export function VideoSection({
         versions: scene.scene_versions || []
       })) || [];
 
-      setScenes(scenesWithVersions);
+      setDbScenes(scenesWithVersions);
     } catch (error) {
-      console.error("Error loading scenes:", error);
-      toast.error("Failed to load scenes");
-    } finally {
-      setLoading(false);
+      console.error("Error loading DB scenes:", error);
     }
   };
 
@@ -166,7 +208,7 @@ export function VideoSection({
         },
       });
 
-      loadScenes();
+      loadDbScenes();
     } catch (error) {
       console.error("Error deleting scene:", error);
       toast.error("Failed to delete scene");
@@ -187,7 +229,7 @@ export function VideoSection({
       }
 
       toast.success("Scene restored!");
-      loadScenes();
+      loadDbScenes();
     } catch (error) {
       console.error("Error restoring scene:", error);
       toast.error("Failed to restore scene");
@@ -229,83 +271,133 @@ export function VideoSection({
         {loading ? (
           <div className="space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-muted animate-pulse rounded-lg h-24" />
+              <Skeleton key={i} className="h-24 w-full" />
             ))}
           </div>
-        ) : scenes.length === 0 ? (
-          <div className="text-center py-8">
-            <Video className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No scenes generated yet</p>
-            <p className="text-sm text-muted-foreground">
-              Select photos and generate your first scene
-            </p>
-          </div>
         ) : (
-          <div className="space-y-4">
-            {scenes.map((scene) => {
-              const latestVersion = getLatestVersion(scene);
-              
-              return (
-                <Card key={scene.id} className="border-border/50">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <Badge className={getStatusColor(scene.status)}>
-                            {scene.status}
-                          </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            v{latestVersion?.version || 1}
-                          </span>
+          <div className="space-y-6">
+            {/* Storage Scenes (Direct from Storage) */}
+            {storageScenes.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                  Video Files from Storage
+                </h4>
+                <div className="grid grid-cols-1 gap-4">
+                  {storageScenes.map((scene) => (
+                    <Card key={scene.key} className="border-border/50">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <Badge variant="secondary">storage</Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {scene.name}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {scene.start_key} → {scene.end_key}
+                        
+                        {/* Video Preview */}
+                        <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                          <video
+                            src={scene.url}
+                            controls
+                            className="w-full h-full"
+                            preload="metadata"
+                          />
                         </div>
-                      </div>
-                      
-                      <div className="flex space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRegenerateScene(scene.id)}
-                          disabled={scene.status === "rendering"}
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteScene(scene.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Generated Scenes (From Database) */}
+            {dbScenes.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                  Generated Scenes
+                </h4>
+                <div className="space-y-4">
+                  {dbScenes.map((scene) => {
+                    const latestVersion = getLatestVersion(scene);
                     
-                    {/* Video Preview */}
-                    {latestVersion?.video_url ? (
-                      <div className="aspect-video bg-black rounded-lg overflow-hidden">
-                        <video
-                          src={latestVersion.video_url}
-                          controls
-                          className="w-full h-full"
-                          preload="metadata"
-                        />
-                      </div>
-                    ) : (
-                      <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                        <div className="text-center">
-                          <Play className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                          <p className="text-sm text-muted-foreground">
-                            {scene.status === "rendering" ? "Rendering..." : "Video pending"}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+                    return (
+                      <Card key={scene.id} className="border-border/50">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center space-x-2">
+                                <Badge className={getStatusColor(scene.status)}>
+                                  {scene.status}
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  v{latestVersion?.version || 1}
+                                </span>
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {scene.start_key} → {scene.end_key}
+                              </div>
+                            </div>
+                            
+                            <div className="flex space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRegenerateScene(scene.id)}
+                                disabled={scene.status === "rendering"}
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteScene(scene.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          {/* Video Preview */}
+                          {latestVersion?.video_url ? (
+                            <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                              <video
+                                src={latestVersion.video_url}
+                                controls
+                                className="w-full h-full"
+                                preload="metadata"
+                              />
+                            </div>
+                          ) : (
+                            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
+                              <div className="text-center">
+                                <Play className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                                <p className="text-sm text-muted-foreground">
+                                  {scene.status === "rendering" ? "Rendering..." : "Video pending"}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {storageScenes.length === 0 && dbScenes.length === 0 && !loading && (
+              <div className="text-center py-8">
+                <Video className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No videos found</p>
+                <p className="text-sm text-muted-foreground">
+                  Upload videos to Scenes/{folder}/ or generate scenes from photos
+                </p>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

@@ -10,7 +10,8 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const storageBucket = Deno.env.get("SUPABASE_STORAGE_BUCKET") || "media";
-const photosRoot = Deno.env.get("STORAGE_PHOTOS_ROOT") || "Photos";
+const scenesRoot = Deno.env.get("STORAGE_SCENES_ROOT") || "Scenes";
+const signedUrlTtl = Number(Deno.env.get("SIGNED_URL_TTL_SECONDS") || 600);
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -48,24 +49,35 @@ async function logError(params: {
   }
 }
 
-function photosRootForUser(uid: string) {
-  // Updated to match user's manual reorganization - Photos at root level
-  return `${photosRoot}/`;
+function scenesProjectPrefix(uid: string, project: string) {
+  // Updated to match user's manual reorganization - Scenes at root level
+  return `${scenesRoot}/${project}/`;
 }
 
-async function listFolders(prefix: string) {
-  let page = 0, limit = 100, out: string[] = [];
+async function listScenes(prefix: string) {
+  let page = 0, limit = 100, files: { name: string, key: string }[] = [];
   while (true) {
     const { data, error } = await supabase.storage
       .from(storageBucket)
       .list(prefix, { limit, offset: page * limit });
     if (error) throw error;
-    const folders = (data || []).filter(d => (d as any).id === null && d.name);
-    out.push(...folders.map(f => f.name));
+    const videos = (data || []).filter(f => 
+      (f as any).id !== null && 
+      (f.name.toLowerCase().endsWith('.mp4') || f.name.toLowerCase().endsWith('.mov') || f.name.toLowerCase().endsWith('.avi'))
+    );
+    files.push(...videos.map(f => ({ name: f.name, key: `${prefix}${f.name}` })));
     if ((data?.length || 0) < limit) break;
     page++;
   }
-  return out;
+  return files;
+}
+
+async function signGetUrl(key: string, ttlSec = signedUrlTtl) {
+  const { data, error } = await supabase.storage
+    .from(storageBucket)
+    .createSignedUrl(key, ttlSec);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 serve(async (req) => {
@@ -85,7 +97,7 @@ serve(async (req) => {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       await logError({
-        route: '/projects-from-storage',
+        route: '/scenes-from-storage',
         method: req.method,
         status: 401,
         code: 'AUTH_ERROR',
@@ -111,7 +123,7 @@ serve(async (req) => {
 
     if (authError || !user) {
       await logError({
-        route: '/projects-from-storage',
+        route: '/scenes-from-storage',
         method: req.method,
         status: 401,
         code: 'AUTH_ERROR',
@@ -134,38 +146,66 @@ serve(async (req) => {
     }
 
     if (req.method === "GET") {
-      // List projects from storage and sync to DB
-      const userPhotosRoot = photosRootForUser(user.id);
-      console.log(`Looking for project folders with prefix: ${userPhotosRoot}`);
-      console.log(`User ID: ${user.id}`);
+      // Get video scenes for a specific project from storage
+      const url = new URL(req.url);
+      const projectName = url.searchParams.get("project");
       
-      try {
-        const projectFolders = await listFolders(userPhotosRoot);
-        console.log(`Found ${projectFolders.length} project folders for user ${user.id}:`, projectFolders);
+      if (!projectName) {
+        await logError({
+          route: '/scenes-from-storage',
+          method: 'GET',
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: 'Project name is required',
+          correlationId,
+          userId: user.id,
+        });
         
-        // Sync projects to database
-        const projectsToUpsert = projectFolders.map(name => ({
-          owner_id: user.id,
-          name,
-          updated_at: new Date().toISOString()
-        }));
+        return new Response(
+          JSON.stringify({ 
+            error: { 
+              code: 'VALIDATION_ERROR', 
+              message: 'Project name is required',
+              correlationId 
+            },
+            ok: false 
+          }),
+          { status: 400, headers: responseHeaders }
+        );
+      }
 
-        if (projectsToUpsert.length > 0) {
-          const { error: upsertError } = await supabase
-            .from("projects")
-            .upsert(projectsToUpsert, { 
-              onConflict: 'owner_id,name',
-              ignoreDuplicates: false
-            });
-
-          if (upsertError) {
-            console.warn(`Failed to sync projects to DB: ${upsertError.message}`);
-          }
-        }
+      try {
+        const projectPrefix = scenesProjectPrefix(user.id, projectName);
+        console.log(`Looking for scenes with prefix: ${projectPrefix}`);
+        console.log(`User ID: ${user.id}, Project: ${projectName}`);
+        
+        const files = await listScenes(projectPrefix);
+        console.log(`Found ${files.length} scene files with prefix: ${projectPrefix}`);
+        
+        // Generate signed URLs for all scenes
+        const scenesWithUrls = await Promise.all(
+          files.map(async (file) => {
+            try {
+              const signedUrl = await signGetUrl(file.key);
+              return {
+                key: file.key,
+                url: signedUrl,
+                name: file.name
+              };
+            } catch (urlError) {
+              console.error(`Failed to generate signed URL for ${file.key}:`, urlError);
+              return {
+                key: file.key,
+                url: null,
+                name: file.name
+              };
+            }
+          })
+        );
 
         return new Response(
           JSON.stringify({ 
-            data: { projects: projectFolders }, 
+            data: { scenes: scenesWithUrls }, 
             ok: true 
           }),
           { headers: responseHeaders }
@@ -173,15 +213,15 @@ serve(async (req) => {
 
       } catch (storageError: any) {
         await logError({
-          route: '/projects-from-storage',
+          route: '/scenes-from-storage',
           method: 'GET',
           status: 500,
           code: 'STORAGE_ERROR',
-          message: 'Failed to list projects from storage',
+          message: 'Failed to list scenes from storage',
           correlationId,
           userId: user.id,
           safeContext: { 
-            userPhotosRoot,
+            projectName,
             storageError: storageError.message 
           }
         });
@@ -190,7 +230,7 @@ serve(async (req) => {
           JSON.stringify({ 
             error: { 
               code: 'STORAGE_ERROR', 
-              message: 'Failed to list projects from storage',
+              message: 'Failed to list scenes from storage',
               correlationId 
             },
             ok: false 
@@ -202,7 +242,7 @@ serve(async (req) => {
 
     // Method not allowed
     await logError({
-      route: '/projects-from-storage',
+      route: '/scenes-from-storage',
       method: req.method,
       status: 405,
       code: 'METHOD_NOT_ALLOWED',
@@ -225,7 +265,7 @@ serve(async (req) => {
 
   } catch (error: any) {
     await logError({
-      route: '/projects-from-storage',
+      route: '/scenes-from-storage',
       method: req.method,
       status: 500,
       code: 'SERVER_ERROR',
