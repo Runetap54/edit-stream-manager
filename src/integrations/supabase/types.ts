@@ -14,7 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      admin_approvals: {
+        Row: {
+          action: string
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          token: string | null
+          used_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          token?: string | null
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          token?: string | null
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_approvals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          role: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id: string
+          role?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          role?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      scene_versions: {
+        Row: {
+          created_at: string | null
+          id: string
+          render_meta: Json | null
+          scene_id: string
+          version: number
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          render_meta?: Json | null
+          scene_id: string
+          version: number
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          render_meta?: Json | null
+          scene_id?: string
+          version?: number
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scene_versions_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scenes: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          end_key: string
+          folder: string
+          id: string
+          shot_type: number
+          start_key: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          end_key: string
+          folder: string
+          id?: string
+          shot_type: number
+          start_key: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          end_key?: string
+          folder?: string
+          id?: string
+          shot_type?: number
+          start_key?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scenes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
