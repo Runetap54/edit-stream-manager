@@ -24,7 +24,7 @@ export default function Auth() {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate("/");
+        navigate("/dashboard");
       }
     };
     checkUser();
@@ -48,7 +48,7 @@ export default function Auth() {
         }
       } else {
         toast.success("Welcome back!");
-        navigate("/");
+        navigate("/dashboard");
       }
     } catch (error) {
       toast.error("An unexpected error occurred");
@@ -68,11 +68,11 @@ export default function Auth() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`
+          emailRedirectTo: `${window.location.origin}/dashboard`
         }
       });
 
@@ -83,6 +83,16 @@ export default function Auth() {
           toast.error(error.message);
         }
       } else {
+        // Trigger admin notification
+        try {
+          await supabase.functions.invoke("admin-notify", {
+            body: { userId: data.user?.id }
+          });
+        } catch (notificationError) {
+          console.warn("Failed to send admin notification:", notificationError);
+          // Don't fail the signup if notification fails
+        }
+        
         toast.success("Account created! Please check your email and wait for admin approval.");
       }
     } catch (error) {

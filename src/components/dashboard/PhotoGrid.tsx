@@ -115,7 +115,25 @@ export function PhotoGrid({
     if (!canGenerateScene) return;
 
     try {
-      // TODO: Call API to create scene
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Please sign in to generate scenes");
+        return;
+      }
+
+      const response = await supabase.functions.invoke("create-scene", {
+        body: {
+          folder,
+          startKey: selectedStart,
+          endKey: selectedEnd,
+          shotType: selectedShotType
+        }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
       toast.success("Scene generation started!");
     } catch (error) {
       console.error("Error generating scene:", error);

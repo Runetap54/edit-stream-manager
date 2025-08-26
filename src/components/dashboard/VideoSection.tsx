@@ -44,6 +44,38 @@ export function VideoSection({
   useEffect(() => {
     if (folder) {
       loadScenes();
+      
+      // Set up real-time subscription for scene updates
+      const channel = supabase
+        .channel('scene-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'scenes',
+            filter: `folder=eq.${folder}`
+          },
+          () => {
+            loadScenes();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'scene_versions'
+          },
+          () => {
+            loadScenes();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [folder]);
 

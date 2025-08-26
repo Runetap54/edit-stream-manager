@@ -1,1 +1,13 @@
 project_id = "fmizfozbyrohydcutkgg"
+
+[functions.admin-notify]
+verify_jwt = false
+
+[functions.admin-action]
+verify_jwt = false
+
+[functions.n8n-callback]
+verify_jwt = false
+
+[functions.create-scene]
+verify_jwt = true
