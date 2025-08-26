@@ -8,27 +8,27 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Core brand colors - cinematic video editing theme */
-    --background: 220 13% 9%;
-    --foreground: 220 9% 96%;
+    /* Miami/Synthwave brand colors */
+    --background: 240 10% 3.9%;
+    --foreground: 180 100% 90%;
 
-    --card: 220 13% 11%;
-    --card-foreground: 220 9% 96%;
+    --card: 240 8% 8%;
+    --card-foreground: 180 100% 90%;
 
-    --popover: 220 13% 11%;
-    --popover-foreground: 220 9% 96%;
+    --popover: 240 8% 8%;
+    --popover-foreground: 180 100% 90%;
 
-    --primary: 280 100% 70%;
-    --primary-foreground: 220 13% 9%;
+    --primary: 180 100% 50%;
+    --primary-foreground: 240 10% 3.9%;
 
-    --secondary: 220 13% 18%;
-    --secondary-foreground: 220 9% 96%;
+    --secondary: 300 100% 50%;
+    --secondary-foreground: 240 10% 3.9%;
 
-    --muted: 220 13% 15%;
-    --muted-foreground: 220 9% 60%;
+    --muted: 240 8% 15%;
+    --muted-foreground: 180 50% 60%;
 
-    --accent: 45 93% 58%;
-    --accent-foreground: 220 13% 9%;
+    --accent: 300 80% 60%;
+    --accent-foreground: 240 10% 3.9%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 220 9% 96%;
@@ -45,14 +45,17 @@ All colors MUST be HSL.
     --status-ready: 120 60% 50%;
     --status-error: 0 84% 60%;
 
-    /* Cinematic gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(280 100% 70%), hsl(320 100% 60%));
+    /* Miami/Synthwave gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(180 100% 50%), hsl(300 100% 50%));
     --gradient-accent: linear-gradient(135deg, hsl(45 93% 58%), hsl(25 95% 53%));
     --gradient-surface: linear-gradient(180deg, hsl(220 13% 11%), hsl(220 13% 9%));
-    --gradient-glow: linear-gradient(135deg, hsla(280 100% 70% / 0.3), hsla(45 93% 58% / 0.3));
+    --gradient-neon: linear-gradient(135deg, hsl(180 100% 50%), hsl(300 80% 60%));
+    --gradient-synthwave: linear-gradient(180deg, hsl(240 10% 3.9%), hsl(240 8% 8%));
+    --gradient-sunset: linear-gradient(135deg, hsl(320 100% 50%), hsl(280 100% 70%));
 
-    /* Shadows and glows */
-    --shadow-glow: 0 0 40px hsla(280 100% 70% / 0.3);
+    /* Neon shadows and glows */
+    --shadow-neon: 0 0 20px hsl(180 100% 50% / 0.5), 0 0 40px hsl(180 100% 50% / 0.3);
+    --shadow-magenta: 0 0 20px hsl(300 100% 50% / 0.5), 0 0 40px hsl(300 100% 50% / 0.3);
     --shadow-accent: 0 0 30px hsla(45 93% 58% / 0.2);
     --shadow-card: 0 10px 30px -10px hsla(220 13% 4% / 0.8);
 

@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Eye, EyeOff, Video, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import paisLogo from "/pais-logo.png";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -110,33 +111,31 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-background via-muted to-background flex items-center justify-center p-4">
+      <div className="w-full max-w-sm space-y-6">
         {/* Logo and Brand */}
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 mx-auto bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-lg">
-            <Video className="w-8 h-8 text-primary-foreground" />
+        <div className="text-center space-y-3">
+          <div className="mx-auto w-32 h-auto">
+            <img 
+              src={paisLogo} 
+              alt="PAIS Logo" 
+              className="w-full h-auto drop-shadow-[0_0_20px_rgba(0,212,170,0.5)]"
+            />
           </div>
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              VideoStream
+            <h1 className="text-2xl font-bold tracking-wider" style={{ textShadow: 'var(--shadow-neon)' }}>
+              PANHANDLE AI SOLUTIONS
             </h1>
-            <p className="text-muted-foreground">Professional video scene creation</p>
+            <p className="text-muted-foreground text-sm">AI-Powered Video Creation</p>
           </div>
         </div>
 
-        <Card className="border-border/20 shadow-xl backdrop-blur">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">Welcome</CardTitle>
-            <CardDescription className="text-center">
-              Sign in to your account or create a new one
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <Card className="border-primary/20 shadow-2xl backdrop-blur-sm bg-card/80" style={{ boxShadow: 'var(--shadow-neon)' }}>
+          <CardContent className="p-6">
             <Tabs defaultValue="signin" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Sign In</TabsTrigger>
-                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 bg-muted/50">
+                <TabsTrigger value="signin" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Sign In</TabsTrigger>
+                <TabsTrigger value="signup" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Sign Up</TabsTrigger>
               </TabsList>
               
               <TabsContent value="signin">
