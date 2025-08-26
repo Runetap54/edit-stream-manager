@@ -52,6 +52,74 @@ export type Database = {
           },
         ]
       }
+      error_events: {
+        Row: {
+          code: string | null
+          correlation_id: string | null
+          created_at: string | null
+          id: number
+          message: string | null
+          method: string | null
+          route: string | null
+          safe_context: Json | null
+          status: number | null
+          user_id: string | null
+        }
+        Insert: {
+          code?: string | null
+          correlation_id?: string | null
+          created_at?: string | null
+          id?: number
+          message?: string | null
+          method?: string | null
+          route?: string | null
+          safe_context?: Json | null
+          status?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          code?: string | null
+          correlation_id?: string | null
+          created_at?: string | null
+          id?: number
+          message?: string | null
+          method?: string | null
+          route?: string | null
+          safe_context?: Json | null
+          status?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      photos: {
+        Row: {
+          created_at: string | null
+          id: string
+          project_id: string | null
+          storage_key: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          project_id?: string | null
+          storage_key: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          project_id?: string | null
+          storage_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photos_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -75,6 +143,30 @@ export type Database = {
           id?: string
           role?: string | null
           status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          owner_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          owner_id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
           updated_at?: string | null
         }
         Relationships: []
