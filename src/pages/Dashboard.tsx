@@ -24,11 +24,13 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentProject, setCurrentProject] = useState<string>("");
+  const [currentProjectId, setCurrentProjectId] = useState<string>("");
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [selectedStart, setSelectedStart] = useState<string>("");
   const [selectedEnd, setSelectedEnd] = useState<string>("");
   const [selectedShotType, setSelectedShotType] = useState<number>(1);
   const { execute: createProject } = useApi();
+  const { execute: fetchProjects } = useApi();
 
   useEffect(() => {
     // Load last selected project from localStorage
@@ -36,6 +38,11 @@ export default function Dashboard() {
     if (lastProject) {
       setCurrentProject(lastProject);
     }
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      supabase.removeAllChannels();
+    };
   }, []);
 
   useEffect(() => {
@@ -125,24 +132,76 @@ export default function Dashboard() {
     toast.success(`Uploaded ${files.length} files to ${folder}`);
   };
 
-  const handleProjectSelect = (projectName: string) => {
+  const handleProjectSelect = async (projectName: string) => {
     setCurrentProject(projectName);
     setUploadedFiles([]);
     setSelectedStart("");
     setSelectedEnd("");
     setSelectedShotType(1);
-    // TODO: Load project files and scenes
+    
+    // Get the project ID for the selected project
+    try {
+      const result = await fetchProjects(async () => {
+        const response = await supabase.functions.invoke('projects', {
+          method: 'GET',
+        });
+
+        if (response.error) {
+          throw response.error;
+        }
+
+        return response.data;
+      });
+
+      if (result?.data) {
+        const project = result.data.find((p: any) => p.name === projectName);
+        if (project) {
+          setCurrentProjectId(project.id);
+          // Set up realtime subscription for this project's photos
+          setupPhotoSubscription(project.id);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching project details:", error);
+      toast.error("Failed to load project details");
+    }
   };
 
-  const handlePhotoSelect = (filename: string, type: "start" | "end") => {
+  // Realtime subscription for photos
+  const setupPhotoSubscription = (projectId: string) => {
+    // Remove existing subscription if any
+    if (currentProjectId) {
+      supabase.removeAllChannels();
+    }
+
+    const channel = supabase
+      .channel(`photos:${projectId}`)
+      .on(
+        'postgres_changes',
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'photos', 
+          filter: `project_id=eq.${projectId}` 
+        },
+        (payload) => {
+          console.log('New photo added:', payload.new);
+          // The PhotoGrid component will refetch automatically due to realtime updates
+          toast.success("New photo added to project");
+        }
+      )
+      .subscribe();
+  };
+
+  const handlePhotoSelect = (storageKey: string, type: "start" | "end") => {
     if (type === "start") {
-      setSelectedStart(filename);
+      setSelectedStart(storageKey);
     } else {
-      setSelectedEnd(filename);
+      setSelectedEnd(storageKey);
     }
     
     // Show toast for feedback when End is set without Start
-    if (type === "end" && filename && !selectedStart) {
+    if (type === "end" && storageKey && !selectedStart) {
       toast.error("Set Start (S) first");
     }
   };
@@ -187,8 +246,7 @@ export default function Dashboard() {
           {/* Photo Grid - Takes up 2 columns on large screens */}
           <div className="lg:col-span-2 space-y-4">
             <PhotoGrid
-              folder={currentProject}
-              files={uploadedFiles}
+              projectId={currentProjectId}
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
               selectedShotType={selectedShotType}

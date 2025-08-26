@@ -6,14 +6,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Images, Play, Loader2 } from "lucide-react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { useApi } from "@/hooks/useApi";
+
+interface Photo {
+  id: string;
+  storage_key: string;
+  created_at: string;
+}
 
 interface PhotoGridProps {
-  folder: string;
-  files: string[];
+  projectId: string;
   selectedStart: string;
   selectedEnd: string;
   selectedShotType: number;
-  onPhotoSelect: (filename: string, type: "start" | "end") => void;
+  onPhotoSelect: (storageKey: string, type: "start" | "end") => void;
   onShotTypeSelect: (shotType: number) => void;
 }
 
@@ -27,54 +33,93 @@ const shotTypes = [
 ];
 
 export function PhotoGrid({
-  folder,
-  files,
+  projectId,
   selectedStart,
   selectedEnd,
   selectedShotType,
   onPhotoSelect,
   onShotTypeSelect,
 }: PhotoGridProps) {
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const { execute: fetchPhotos } = useApi();
 
   useEffect(() => {
-    const loadImages = async () => {
-      if (!folder || files.length === 0) {
+    const loadPhotos = async () => {
+      if (!projectId) {
+        setPhotos([]);
         setImageUrls({});
         return;
       }
 
       setLoading(true);
-      const urls: Record<string, string> = {};
       
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        for (const file of files) {
-          const filePath = `${user.id}/${folder}/${file}`;
-          const { data } = await supabase.storage
-            .from("media")
-            .createSignedUrl(filePath, 3600); // 1 hour expiry
-
-          if (data?.signedUrl) {
-            urls[file] = data.signedUrl;
-          }
+        // We need to call the edge function with projectId as a query parameter
+        // Since supabase.functions.invoke doesn't directly support query params,
+        // we'll use direct fetch to the function URL
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          throw new Error('No session found');
         }
+
+        const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/photos?projectId=${projectId}`;
+        const response = await fetch(functionUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json();
         
-        setImageUrls(urls);
+        if (!result.ok) {
+          throw new Error(result.error?.message || 'Failed to fetch photos');
+        }
+
+        if (result.data) {
+          setPhotos(result.data);
+          await loadImageUrls(result.data);
+        }
       } catch (error) {
-        console.error("Error loading images:", error);
-        toast.error("Failed to load images");
+        console.error("Error loading photos:", error);
+        toast.error("Failed to load photos");
       } finally {
         setLoading(false);
       }
     };
 
-    loadImages();
-  }, [folder, files]);
+    loadPhotos();
+  }, [projectId]);
+
+  const loadImageUrls = async (photosList: Photo[]) => {
+    const urls: Record<string, string> = {};
+    
+    try {
+      for (const photo of photosList) {
+        const { data } = await supabase.storage
+          .from("media")
+          .createSignedUrl(photo.storage_key, 3600); // 1 hour expiry
+
+        if (data?.signedUrl) {
+          urls[photo.storage_key] = data.signedUrl;
+        }
+      }
+      
+      setImageUrls(urls);
+    } catch (error) {
+      console.error("Error loading image URLs:", error);
+      toast.error("Failed to load image URLs");
+    }
+  };
 
   // Hotkey handlers
   useHotkeys('s', () => {
@@ -105,15 +150,20 @@ export function PhotoGrid({
   useHotkeys('5', () => onShotTypeSelect(5), { enableOnFormTags: false }, [onShotTypeSelect]);
   useHotkeys('6', () => onShotTypeSelect(6), { enableOnFormTags: false }, [onShotTypeSelect]);
 
-  const handleImageClick = (filename: string, e: React.MouseEvent) => {
+  const handleImageClick = (storageKey: string, e: React.MouseEvent) => {
     if (e.shiftKey) {
-      onPhotoSelect(filename, "end");
+      onPhotoSelect(storageKey, "end");
     } else {
-      onPhotoSelect(filename, "start");
+      onPhotoSelect(storageKey, "start");
     }
   };
 
-  const canGenerateScene = selectedStart && folder;
+  const canGenerateScene = selectedStart && projectId;
+
+  // Get filename from storage key for display
+  const getFilename = (storageKey: string) => {
+    return storageKey.split('/').pop() || storageKey;
+  };
 
   const handleGenerateScene = async () => {
     if (!canGenerateScene) return;
@@ -128,7 +178,7 @@ export function PhotoGrid({
       }
 
       const requestBody: any = {
-        folder,
+        folder: projectId, // Using projectId as folder for now
         startKey: selectedStart,
         shotType: selectedShotType
       };
@@ -188,13 +238,13 @@ export function PhotoGrid({
     }
   };
 
-  if (!folder) {
+  if (!projectId) {
     return (
       <Card className="h-64">
         <CardContent className="flex items-center justify-center h-full">
           <div className="text-center space-y-2">
             <Images className="w-12 h-12 mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground">Upload photos to get started</p>
+            <p className="text-muted-foreground">Select a project to view photos</p>
           </div>
         </CardContent>
       </Card>
@@ -207,10 +257,10 @@ export function PhotoGrid({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center space-x-2">
             <Images className="w-5 h-5" />
-            <span>Photo Grid - {folder}</span>
+            <span>Photo Grid</span>
           </CardTitle>
           <div className="text-sm text-muted-foreground">
-            {files.length} images
+            {photos.length} images
           </div>
         </div>
       </CardHeader>
@@ -236,37 +286,43 @@ export function PhotoGrid({
         {/* Photo Grid */}
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {Array.from({ length: Math.min(files.length, 8) }).map((_, i) => (
+            {Array.from({ length: Math.min(photos.length || 8, 8) }).map((_, i) => (
               <div
                 key={i}
                 className="aspect-square bg-muted animate-pulse rounded-lg"
               />
             ))}
           </div>
+        ) : photos.length === 0 ? (
+          <div className="text-center py-8">
+            <Images className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
+            <p className="text-muted-foreground">No photos in this project yet</p>
+          </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {files.map((file) => {
-              const isStart = selectedStart === file;
-              const isEnd = selectedEnd === file;
-              const isHovered = hoveredKey === file;
-              const url = imageUrls[file];
+            {photos.map((photo) => {
+              const isStart = selectedStart === photo.storage_key;
+              const isEnd = selectedEnd === photo.storage_key;
+              const isHovered = hoveredKey === photo.storage_key;
+              const url = imageUrls[photo.storage_key];
               const isSameImage = isStart && isEnd;
+              const filename = getFilename(photo.storage_key);
 
               return (
                 <div
-                  key={file}
+                  key={photo.id}
                   className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-105 ${
                     isStart || isEnd ? "ring-2 ring-primary shadow-lg" : ""
                   }`}
-                  onClick={(e) => handleImageClick(file, e)}
-                  onMouseEnter={() => setHoveredKey(file)}
+                  onClick={(e) => handleImageClick(photo.storage_key, e)}
+                  onMouseEnter={() => setHoveredKey(photo.storage_key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   title={isSameImage ? "Start = End (single frame)" : ""}
                 >
                   {url ? (
                     <img
                       src={url}
-                      alt={file}
+                      alt={filename}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -308,7 +364,7 @@ export function PhotoGrid({
                   
                   {/* Filename */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                    <div className="text-white text-xs truncate">{file}</div>
+                    <div className="text-white text-xs truncate">{filename}</div>
                   </div>
                 </div>
               );
