@@ -24,13 +24,11 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentProject, setCurrentProject] = useState<string>("");
-  const [currentProjectId, setCurrentProjectId] = useState<string>("");
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [selectedStart, setSelectedStart] = useState<string>("");
   const [selectedEnd, setSelectedEnd] = useState<string>("");
   const [selectedShotType, setSelectedShotType] = useState<number>(1);
   const { execute: createProject } = useApi();
-  const { execute: fetchProjects } = useApi();
 
   useEffect(() => {
     // Load last selected project from localStorage
@@ -139,50 +137,25 @@ export default function Dashboard() {
     setSelectedEnd("");
     setSelectedShotType(1);
     
-    // Get the project ID for the selected project
-    try {
-      const result = await fetchProjects(async () => {
-        const response = await supabase.functions.invoke('projects', {
-          method: 'GET',
-        });
-
-        if (response.error) {
-          throw response.error;
-        }
-
-        return response.data;
-      });
-
-      if (result?.data) {
-        const project = result.data.find((p: any) => p.name === projectName);
-        if (project) {
-          setCurrentProjectId(project.id);
-          // Set up realtime subscription for this project's photos
-          setupPhotoSubscription(project.id);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching project details:", error);
-      toast.error("Failed to load project details");
-    }
+    // Set up realtime subscription for this project's photos
+    setupPhotoSubscription(projectName);
   };
 
   // Realtime subscription for photos
-  const setupPhotoSubscription = (projectId: string) => {
+  const setupPhotoSubscription = (projectName: string) => {
     // Remove existing subscription if any
-    if (currentProjectId) {
-      supabase.removeAllChannels();
-    }
+    supabase.removeAllChannels();
+
+    if (!projectName) return;
 
     const channel = supabase
-      .channel(`photos:${projectId}`)
+      .channel(`photos:${projectName}`)
       .on(
         'postgres_changes',
         { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'photos', 
-          filter: `project_id=eq.${projectId}` 
+          table: 'photos'
         },
         (payload) => {
           console.log('New photo added:', payload.new);
@@ -246,7 +219,7 @@ export default function Dashboard() {
           {/* Photo Grid - Takes up 2 columns on large screens */}
           <div className="lg:col-span-2 space-y-4">
             <PhotoGrid
-              projectId={currentProjectId}
+              projectName={currentProject}
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
               selectedShotType={selectedShotType}

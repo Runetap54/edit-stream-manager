@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.create-scene]
 verify_jwt = true
+
+[functions.projects-from-storage]
+verify_jwt = true
+
+[functions.photos-from-storage]
+verify_jwt = true
+
+[functions.storage-sync]
+verify_jwt = true

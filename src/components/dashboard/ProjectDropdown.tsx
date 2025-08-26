@@ -33,23 +33,49 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
 
   const loadProjects = async () => {
     const result = await fetchProjects(async () => {
-      const response = await supabase.functions.invoke('projects', {
-        method: 'GET',
-      });
-
-      if (response.error) {
-        throw response.error;
+      // Use new storage-based endpoint
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No session found');
       }
 
-      return response.data;
+      const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/projects-from-storage`;
+      const response = await fetch(functionUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (!result.ok) {
+        throw new Error(result.error?.message || 'Failed to fetch projects');
+      }
+
+      return result.data.projects;
     });
 
     if (result?.data) {
-      setProjects(result.data);
+      // Convert project names to project objects for compatibility
+      const projectObjects = result.data.map((name: string) => ({
+        id: name, // Use name as ID for now
+        name,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      
+      setProjects(projectObjects);
       
       // Auto-select the most recent project if none selected
-      if (!selectedProject && result.data.length > 0) {
-        onProjectSelect(result.data[0].name);
+      if (!selectedProject && projectObjects.length > 0) {
+        onProjectSelect(projectObjects[0].name);
       }
     }
   };

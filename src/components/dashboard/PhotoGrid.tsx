@@ -9,13 +9,13 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { useApi } from "@/hooks/useApi";
 
 interface Photo {
-  id: string;
-  storage_key: string;
-  created_at: string;
+  key: string;
+  url: string;
+  name: string;
 }
 
 interface PhotoGridProps {
-  projectId: string;
+  projectName: string;
   selectedStart: string;
   selectedEnd: string;
   selectedShotType: number;
@@ -33,7 +33,7 @@ const shotTypes = [
 ];
 
 export function PhotoGrid({
-  projectId,
+  projectName,
   selectedStart,
   selectedEnd,
   selectedShotType,
@@ -41,31 +41,26 @@ export function PhotoGrid({
   onShotTypeSelect,
 }: PhotoGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const { execute: fetchPhotos } = useApi();
 
   useEffect(() => {
     const loadPhotos = async () => {
-      if (!projectId) {
+      if (!projectName) {
         setPhotos([]);
-        setImageUrls({});
         return;
       }
 
       setLoading(true);
       
       try {
-        // We need to call the edge function with projectId as a query parameter
-        // Since supabase.functions.invoke doesn't directly support query params,
-        // we'll use direct fetch to the function URL
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           throw new Error('No session found');
         }
 
-        const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/photos?projectId=${projectId}`;
+        const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/photos-from-storage?project=${encodeURIComponent(projectName)}`;
         const response = await fetch(functionUrl, {
           method: 'GET',
           headers: {
@@ -85,9 +80,8 @@ export function PhotoGrid({
           throw new Error(result.error?.message || 'Failed to fetch photos');
         }
 
-        if (result.data) {
-          setPhotos(result.data);
-          await loadImageUrls(result.data);
+        if (result.data?.photos) {
+          setPhotos(result.data.photos);
         }
       } catch (error) {
         console.error("Error loading photos:", error);
@@ -98,28 +92,8 @@ export function PhotoGrid({
     };
 
     loadPhotos();
-  }, [projectId]);
+  }, [projectName]);
 
-  const loadImageUrls = async (photosList: Photo[]) => {
-    const urls: Record<string, string> = {};
-    
-    try {
-      for (const photo of photosList) {
-        const { data } = await supabase.storage
-          .from("media")
-          .createSignedUrl(photo.storage_key, 3600); // 1 hour expiry
-
-        if (data?.signedUrl) {
-          urls[photo.storage_key] = data.signedUrl;
-        }
-      }
-      
-      setImageUrls(urls);
-    } catch (error) {
-      console.error("Error loading image URLs:", error);
-      toast.error("Failed to load image URLs");
-    }
-  };
 
   // Hotkey handlers
   useHotkeys('s', () => {
@@ -158,7 +132,7 @@ export function PhotoGrid({
     }
   };
 
-  const canGenerateScene = selectedStart && projectId;
+  const canGenerateScene = selectedStart && projectName;
 
   // Get filename from storage key for display
   const getFilename = (storageKey: string) => {
@@ -178,7 +152,7 @@ export function PhotoGrid({
       }
 
       const requestBody: any = {
-        folder: projectId, // Using projectId as folder for now
+        folder: projectName,
         startKey: selectedStart,
         shotType: selectedShotType
       };
@@ -238,7 +212,7 @@ export function PhotoGrid({
     }
   };
 
-  if (!projectId) {
+  if (!projectName) {
     return (
       <Card className="h-64">
         <CardContent className="flex items-center justify-center h-full">
@@ -296,26 +270,29 @@ export function PhotoGrid({
         ) : photos.length === 0 ? (
           <div className="text-center py-8">
             <Images className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No photos in this project yet</p>
+            <p className="text-muted-foreground">No photos found in Photos/{projectName}/</p>
+            <Button variant="outline" size="sm" className="mt-2">
+              Open Upload Panel
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {photos.map((photo) => {
-              const isStart = selectedStart === photo.storage_key;
-              const isEnd = selectedEnd === photo.storage_key;
-              const isHovered = hoveredKey === photo.storage_key;
-              const url = imageUrls[photo.storage_key];
+              const isStart = selectedStart === photo.key;
+              const isEnd = selectedEnd === photo.key;
+              const isHovered = hoveredKey === photo.key;
+              const url = photo.url;
               const isSameImage = isStart && isEnd;
-              const filename = getFilename(photo.storage_key);
+              const filename = photo.name;
 
               return (
                 <div
-                  key={photo.id}
+                  key={photo.key}
                   className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-105 ${
                     isStart || isEnd ? "ring-2 ring-primary shadow-lg" : ""
                   }`}
-                  onClick={(e) => handleImageClick(photo.storage_key, e)}
-                  onMouseEnter={() => setHoveredKey(photo.storage_key)}
+                  onClick={(e) => handleImageClick(photo.key, e)}
+                  onMouseEnter={() => setHoveredKey(photo.key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   title={isSameImage ? "Start = End (single frame)" : ""}
                 >
