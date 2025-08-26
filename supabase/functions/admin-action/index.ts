@@ -6,9 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const supabaseUrl = Deno.env.get("https://fmizfozbyrohydcutkgg.supabase.co")!;
-const supabaseServiceKey = Deno.env.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtaXpmb3pieXJvaHlkY3V0a2dnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjE3NTY3NywiZXhwIjoyMDcxNzUxNjc3fQ.Tf90_ZjxAlnRrf95Ts62T4a4hNOZsn2dr2HI7c0a73E")!;
-
+const supabaseUrl = Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 serve(async (req) => {
