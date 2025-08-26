@@ -52,6 +52,12 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				status: {
+					queued: 'hsl(var(--status-queued))',
+					rendering: 'hsl(var(--status-rendering))',
+					ready: 'hsl(var(--status-ready))',
+					error: 'hsl(var(--status-error))'
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
