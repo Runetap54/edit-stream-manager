@@ -98,6 +98,11 @@ export default function Dashboard() {
     } else {
       setSelectedEnd(filename);
     }
+    
+    // Show toast for feedback when End is set without Start
+    if (type === "end" && filename && !selectedStart) {
+      toast.error("Set Start (S) first");
+    }
   };
 
   const handleShotTypeSelect = (shotType: number) => {

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Images, Play } from "lucide-react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 interface PhotoGridProps {
   folder: string;
@@ -36,6 +37,7 @@ export function PhotoGrid({
 }: PhotoGridProps) {
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   useEffect(() => {
     const loadImages = async () => {
@@ -74,32 +76,34 @@ export function PhotoGrid({
     loadImages();
   }, [folder, files]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-      
-      switch (e.key.toLowerCase()) {
-        case 's':
-          // Mark start
-          break;
-        case 'e':
-          // Mark end
-          break;
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-          onShotTypeSelect(parseInt(e.key));
-          break;
+  // Hotkey handlers
+  useHotkeys('s', () => {
+    if (hoveredKey) {
+      if (selectedStart === hoveredKey) {
+        onPhotoSelect("", "start"); // Clear start if same image
+      } else {
+        onPhotoSelect(hoveredKey, "start");
       }
-    };
+    }
+  }, { enableOnFormTags: false }, [hoveredKey, selectedStart, onPhotoSelect]);
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [onShotTypeSelect]);
+  useHotkeys('e', () => {
+    if (hoveredKey) {
+      if (selectedEnd === hoveredKey) {
+        onPhotoSelect("", "end"); // Clear end if same image
+      } else {
+        onPhotoSelect(hoveredKey, "end");
+      }
+    }
+  }, { enableOnFormTags: false }, [hoveredKey, selectedEnd, onPhotoSelect]);
+
+  // Shot type hotkeys
+  useHotkeys('1', () => onShotTypeSelect(1), { enableOnFormTags: false }, [onShotTypeSelect]);
+  useHotkeys('2', () => onShotTypeSelect(2), { enableOnFormTags: false }, [onShotTypeSelect]);
+  useHotkeys('3', () => onShotTypeSelect(3), { enableOnFormTags: false }, [onShotTypeSelect]);
+  useHotkeys('4', () => onShotTypeSelect(4), { enableOnFormTags: false }, [onShotTypeSelect]);
+  useHotkeys('5', () => onShotTypeSelect(5), { enableOnFormTags: false }, [onShotTypeSelect]);
+  useHotkeys('6', () => onShotTypeSelect(6), { enableOnFormTags: false }, [onShotTypeSelect]);
 
   const handleImageClick = (filename: string, e: React.MouseEvent) => {
     if (e.shiftKey) {
@@ -109,7 +113,7 @@ export function PhotoGrid({
     }
   };
 
-  const canGenerateScene = selectedStart && selectedEnd && folder;
+  const canGenerateScene = selectedStart && folder;
 
   const handleGenerateScene = async () => {
     if (!canGenerateScene) return;
@@ -121,13 +125,19 @@ export function PhotoGrid({
         return;
       }
 
+      const requestBody: any = {
+        folder,
+        startKey: selectedStart,
+        shotType: selectedShotType
+      };
+
+      // Only include endKey if it's set
+      if (selectedEnd) {
+        requestBody.endKey = selectedEnd;
+      }
+
       const response = await supabase.functions.invoke("create-scene", {
-        body: {
-          folder,
-          startKey: selectedStart,
-          endKey: selectedEnd,
-          shotType: selectedShotType
-        }
+        body: requestBody
       });
 
       if (response.error) {
@@ -201,7 +211,9 @@ export function PhotoGrid({
             {files.map((file) => {
               const isStart = selectedStart === file;
               const isEnd = selectedEnd === file;
+              const isHovered = hoveredKey === file;
               const url = imageUrls[file];
+              const isSameImage = isStart && isEnd;
 
               return (
                 <div
@@ -210,6 +222,9 @@ export function PhotoGrid({
                     isStart || isEnd ? "ring-2 ring-primary shadow-lg" : ""
                   }`}
                   onClick={(e) => handleImageClick(file, e)}
+                  onMouseEnter={() => setHoveredKey(file)}
+                  onMouseLeave={() => setHoveredKey(null)}
+                  title={isSameImage ? "Start = End (single frame)" : ""}
                 >
                   {url ? (
                     <img
@@ -223,15 +238,34 @@ export function PhotoGrid({
                     </div>
                   )}
                   
-                  {/* Badges */}
+                  {/* Ghost badges on hover */}
+                  {isHovered && !isStart && !isEnd && (
+                    <>
+                      <Badge variant="outline" className="absolute top-2 left-2 opacity-50 bg-background/80">
+                        S
+                      </Badge>
+                      <Badge variant="outline" className="absolute top-2 right-2 opacity-50 bg-background/80">
+                        E
+                      </Badge>
+                    </>
+                  )}
+                  
+                  {/* Actual badges */}
                   {isStart && (
-                    <Badge className="absolute top-2 left-2 bg-green-500 hover:bg-green-600">
+                    <Badge className="absolute top-2 left-2 bg-green-500 hover:bg-green-600 text-white">
                       S
                     </Badge>
                   )}
                   {isEnd && (
-                    <Badge className="absolute top-2 right-2 bg-red-500 hover:bg-red-600">
+                    <Badge className="absolute top-2 right-2 bg-blue-500 hover:bg-blue-600 text-white">
                       E
+                    </Badge>
+                  )}
+                  
+                  {/* Single frame indicator */}
+                  {isSameImage && (
+                    <Badge className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-purple-500 text-white text-xs">
+                      Single
                     </Badge>
                   )}
                   
@@ -246,7 +280,7 @@ export function PhotoGrid({
         )}
 
         {/* Generate Scene Button */}
-        <div className="flex justify-center pt-4">
+        <div className="flex flex-col items-center pt-4 space-y-2">
           <Button
             onClick={handleGenerateScene}
             disabled={!canGenerateScene}
@@ -255,12 +289,18 @@ export function PhotoGrid({
             <Play className="w-4 h-4 mr-2" />
             Generate Scene
           </Button>
+          {selectedStart && !selectedEnd && (
+            <p className="text-xs text-muted-foreground">End optional</p>
+          )}
+          {selectedEnd && !selectedStart && (
+            <p className="text-xs text-orange-500">Set Start (S) first</p>
+          )}
         </div>
 
         {/* Instructions */}
         <div className="text-xs text-muted-foreground text-center space-y-1">
-          <p>Click image to mark Start • Shift+Click to mark End</p>
-          <p>Use keys 1-6 to select shot type • S/E for start/end</p>
+          <p>Hover image then press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">S</kbd> to set Start, <kbd className="px-1 py-0.5 bg-muted rounded text-xs">E</kbd> to set End. End is optional.</p>
+          <p>Click to set Start • Shift+Click to set End • Keys <kbd className="px-1 py-0.5 bg-muted rounded text-xs">1-6</kbd> for shot type</p>
         </div>
       </CardContent>
     </Card>
