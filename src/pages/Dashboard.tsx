@@ -7,7 +7,9 @@ import { UploadPanel } from "@/components/dashboard/UploadPanel";
 import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { ProjectDropdown } from "@/components/dashboard/ProjectDropdown";
 import { Loader2 } from "lucide-react";
+import { useApi } from "@/hooks/useApi";
 
 interface Profile {
   id: string;
@@ -21,11 +23,27 @@ export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentFolder, setCurrentFolder] = useState<string>("");
+  const [currentProject, setCurrentProject] = useState<string>("");
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [selectedStart, setSelectedStart] = useState<string>("");
   const [selectedEnd, setSelectedEnd] = useState<string>("");
   const [selectedShotType, setSelectedShotType] = useState<number>(1);
+  const { execute: createProject } = useApi();
+
+  useEffect(() => {
+    // Load last selected project from localStorage
+    const lastProject = localStorage.getItem('lastSelectedProject');
+    if (lastProject) {
+      setCurrentProject(lastProject);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Save current project to localStorage
+    if (currentProject) {
+      localStorage.setItem('lastSelectedProject', currentProject);
+    }
+  }, [currentProject]);
 
   useEffect(() => {
     // Check authentication and profile status
@@ -83,13 +101,37 @@ export default function Dashboard() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleUploadComplete = (folder: string, files: string[]) => {
-    setCurrentFolder(folder);
+  const handleUploadComplete = async (folder: string, files: string[]) => {
+    setCurrentProject(folder);
     setUploadedFiles(files);
     setSelectedStart("");
     setSelectedEnd("");
     setSelectedShotType(1);
+    
+    // Create/update project in database
+    await createProject(async () => {
+      const response = await supabase.functions.invoke('projects', {
+        method: 'POST',
+        body: { name: folder }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    });
+    
     toast.success(`Uploaded ${files.length} files to ${folder}`);
+  };
+
+  const handleProjectSelect = (projectName: string) => {
+    setCurrentProject(projectName);
+    setUploadedFiles([]);
+    setSelectedStart("");
+    setSelectedEnd("");
+    setSelectedShotType(1);
+    // TODO: Load project files and scenes
   };
 
   const handlePhotoSelect = (filename: string, type: "start" | "end") => {
@@ -129,6 +171,14 @@ export default function Dashboard() {
       <DashboardHeader user={user} profile={profile} />
       
       <div className="container mx-auto p-6 space-y-6">
+        {/* Project Selection */}
+        <div className="flex items-center justify-between">
+          <ProjectDropdown 
+            selectedProject={currentProject}
+            onProjectSelect={handleProjectSelect}
+          />
+        </div>
+        
         {/* Upload Panel */}
         <UploadPanel onUploadComplete={handleUploadComplete} />
         
@@ -137,7 +187,7 @@ export default function Dashboard() {
           {/* Photo Grid - Takes up 2 columns on large screens */}
           <div className="lg:col-span-2 space-y-4">
             <PhotoGrid
-              folder={currentFolder}
+              folder={currentProject}
               files={uploadedFiles}
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
@@ -150,7 +200,7 @@ export default function Dashboard() {
           {/* Video Section - Takes up 1 column on large screens */}
           <div className="space-y-4">
             <VideoSection
-              folder={currentFolder}
+              folder={currentProject}
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
               selectedShotType={selectedShotType}

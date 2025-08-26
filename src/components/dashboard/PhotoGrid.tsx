@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Images, Play } from "lucide-react";
+import { Images, Play, Loader2 } from "lucide-react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 interface PhotoGridProps {
@@ -119,6 +119,8 @@ export function PhotoGrid({
     if (!canGenerateScene) return;
 
     try {
+      setLoading(true);
+      
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         toast.error("Please sign in to generate scenes");
@@ -141,13 +143,48 @@ export function PhotoGrid({
       });
 
       if (response.error) {
-        throw new Error(response.error.message);
+        // Parse the error response properly
+        const error = response.error;
+        
+        // Handle specific error cases with better UX
+        if (error.code === 'N8N_RENDER_FAILED') {
+          toast.error("Render service is unreachable", {
+            description: error.correlationId,
+            action: {
+              label: 'Copy Details',
+              onClick: () => {
+                navigator.clipboard.writeText(
+                  `Error: ${error.code}\nID: ${error.correlationId}\nEndpoint: ${error.detail?.endpoint}`
+                );
+                toast.success('Error details copied');
+              }
+            }
+          });
+        } else if (error.code === 'RLS_DENIED') {
+          toast.error("You are not allowed to write to this project", {
+            description: error.correlationId
+          });
+        } else if (error.code === 'VALIDATION_ERROR') {
+          toast.error("Please check your selections and try again", {
+            description: error.detail?.fields?.join(', ') || error.correlationId
+          });
+        } else {
+          toast.error(error.message || "Failed to generate scene", {
+            description: error.correlationId
+          });
+        }
+        
+        return;
       }
 
-      toast.success("Scene generation started!");
-    } catch (error) {
+      toast.success("Scene generation started!", {
+        description: response.data.sceneId ? `Scene ID: ${response.data.sceneId}` : undefined
+      });
+    } catch (error: any) {
       console.error("Error generating scene:", error);
-      toast.error("Failed to generate scene");
+      toast.error("Network error - please check your connection");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -283,11 +320,20 @@ export function PhotoGrid({
         <div className="flex flex-col items-center pt-4 space-y-2">
           <Button
             onClick={handleGenerateScene}
-            disabled={!canGenerateScene}
+            disabled={!canGenerateScene || loading}
             className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
           >
-            <Play className="w-4 h-4 mr-2" />
-            Generate Scene
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-2" />
+                Generate Scene
+              </>
+            )}
           </Button>
           {selectedStart && !selectedEnd && (
             <p className="text-xs text-muted-foreground">End optional</p>
