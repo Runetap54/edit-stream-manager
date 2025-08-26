@@ -69,7 +69,7 @@ SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    - Generate password for "Mail"
 3. **Add to Supabase Secrets**:
    - `SMTP_USER`: hello@panhandle-ai.com
-   - `SMTP_PASS`: [Your Gmail App Password]
+   - `SMTP_PASS`: 
 
 ### 3. n8n Webhook Secret
 
