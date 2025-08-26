@@ -8,8 +8,8 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const smtpUser = Deno.env.get("SMTP_USER")!;
-const smtpPass = Deno.env.get("SMTP_PASS")!;
+const smtpUser = Deno.env.get("smtpUser")!;
+const smtpPass = Deno.env.get("smtpPass")!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
