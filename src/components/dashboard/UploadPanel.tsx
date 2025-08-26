@@ -64,7 +64,7 @@ export function UploadPanel({ onUploadComplete }: UploadPanelProps) {
       for (let i = 0; i < totalFiles; i++) {
         const file = selectedFiles[i];
         const fileName = file.name;
-        const filePath = `${user.id}/${folderName}/${fileName}`;
+        const filePath = `users/${user.id}/Photos/${folderName}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("media")
@@ -121,7 +121,7 @@ export function UploadPanel({ onUploadComplete }: UploadPanelProps) {
   };
 
   return (
-    <Card className={`transition-all duration-300 ${isCollapsed ? 'h-16' : 'h-auto'} overflow-hidden`}>
+    <Card className={`transition-all duration-300 ${isCollapsed ? 'h-16' : 'h-auto'} overflow-hidden`} data-upload-panel>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">

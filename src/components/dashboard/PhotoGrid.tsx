@@ -61,6 +61,8 @@ export function PhotoGrid({
         }
 
         const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/photos-from-storage?project=${encodeURIComponent(projectName)}`;
+        console.log(`Fetching photos from: ${functionUrl}`);
+        
         const response = await fetch(functionUrl, {
           method: 'GET',
           headers: {
@@ -69,23 +71,29 @@ export function PhotoGrid({
           },
         });
 
+        console.log(`Response status: ${response.status}`);
+
         if (!response.ok) {
           const errorText = await response.text();
+          console.error(`HTTP Error: ${response.status} - ${errorText}`);
           throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
         const result = await response.json();
+        console.log('API Response:', result);
         
         if (!result.ok) {
           throw new Error(result.error?.message || 'Failed to fetch photos');
         }
 
-        if (result.data?.photos) {
-          setPhotos(result.data.photos);
-        }
+        const photos = result.data?.photos || [];
+        console.log(`Found ${photos.length} photos for project ${projectName}`);
+        setPhotos(photos);
       } catch (error) {
         console.error("Error loading photos:", error);
-        toast.error("Failed to load photos");
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load photos';
+        toast.error(`${errorMessage} for project: ${projectName}`);
+        setPhotos([]);
       } finally {
         setLoading(false);
       }
@@ -270,8 +278,20 @@ export function PhotoGrid({
         ) : photos.length === 0 ? (
           <div className="text-center py-8">
             <Images className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No photos found in Photos/{projectName}/</p>
-            <Button variant="outline" size="sm" className="mt-2">
+            <p className="text-muted-foreground">No photos found in users/&lt;uid&gt;/Photos/{projectName}/</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-2"
+              onClick={() => {
+                const uploadPanel = document.querySelector('[data-upload-panel]');
+                if (uploadPanel) {
+                  uploadPanel.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                  toast.info("Please scroll up to the Upload Panel to add photos");
+                }
+              }}
+            >
               Open Upload Panel
             </Button>
           </div>
