@@ -56,7 +56,7 @@ export function PhotoGrid({
       
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
+        if (!session?.user) {
           throw new Error('No session found');
         }
 
@@ -278,7 +278,7 @@ export function PhotoGrid({
         ) : photos.length === 0 ? (
           <div className="text-center py-8">
             <Images className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No photos found in users/&lt;uid&gt;/Photos/{projectName}/</p>
+            <p className="text-muted-foreground">No photos found in storage path for project: {projectName}</p>
             <Button 
               variant="outline" 
               size="sm" 

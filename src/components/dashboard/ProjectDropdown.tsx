@@ -33,13 +33,15 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
 
   const loadProjects = async () => {
     const result = await fetchProjects(async () => {
-      // Use new storage-based endpoint
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('No session found');
       }
 
+      console.log('Fetching projects from storage...');
       const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/projects-from-storage`;
+      console.log(`Function URL: ${functionUrl}`);
+      
       const response = await fetch(functionUrl, {
         method: 'GET',
         headers: {
@@ -48,18 +50,24 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
         },
       });
 
+      console.log(`Response status: ${response.status}`);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`HTTP Error: ${response.status} - ${errorText}`);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('Projects API Response:', result);
       
       if (!result.ok) {
         throw new Error(result.error?.message || 'Failed to fetch projects');
       }
 
-      return result.data.projects;
+      const projects = result.data?.projects || [];
+      console.log(`Found ${projects.length} projects:`, projects);
+      return projects;
     });
 
     if (result?.data) {

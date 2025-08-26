@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-correlation-id",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -134,9 +135,12 @@ serve(async (req) => {
     if (req.method === "GET") {
       // List projects from storage and sync to DB
       const userPhotosRoot = photosRootForUser(user.id);
+      console.log(`Looking for project folders with prefix: ${userPhotosRoot}`);
+      console.log(`User ID: ${user.id}`);
       
       try {
         const projectFolders = await listFolders(userPhotosRoot);
+        console.log(`Found ${projectFolders.length} project folders for user ${user.id}:`, projectFolders);
         
         // Sync projects to database
         const projectsToUpsert = projectFolders.map(name => ({

@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-correlation-id",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -171,7 +172,11 @@ serve(async (req) => {
 
       try {
         const projectPrefix = photosProjectPrefix(user.id, projectName);
+        console.log(`Looking for photos with prefix: ${projectPrefix}`);
+        console.log(`User ID: ${user.id}, Project: ${projectName}`);
+        
         const files = await listPhotos(projectPrefix);
+        console.log(`Found ${files.length} files with prefix: ${projectPrefix}`);
         
         // Generate signed URLs for all photos
         const photosWithUrls = await Promise.all(
