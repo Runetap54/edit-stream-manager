@@ -64,7 +64,7 @@ export function UploadPanel({ onUploadComplete }: UploadPanelProps) {
       for (let i = 0; i < totalFiles; i++) {
         const file = selectedFiles[i];
         const fileName = file.name;
-        const filePath = `users/${user.id}/Photos/${folderName}/${fileName}`;
+        const filePath = `Photos/${folderName}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("media")

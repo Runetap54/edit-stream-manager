@@ -1,6 +1,6 @@
 export function photosProjectPrefix(uid: string, project: string) {
   const root = process.env.STORAGE_PHOTOS_ROOT || 'Photos';
-  return `users/${uid}/${root}/${project}/`;
+  return `${root}/${project}/`;
 }
 
 export function scenesProjectPrefix(uid: string, project: string) {
@@ -10,5 +10,5 @@ export function scenesProjectPrefix(uid: string, project: string) {
 
 export function photosRootForUser(uid: string) {
   const root = process.env.STORAGE_PHOTOS_ROOT || 'Photos';
-  return `users/${uid}/${root}/`;
+  return `${root}/`;
 }
