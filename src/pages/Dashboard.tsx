@@ -28,6 +28,16 @@ export default function Dashboard() {
   const [selectedStart, setSelectedStart] = useState<string>("");
   const [selectedEnd, setSelectedEnd] = useState<string>("");
   const [selectedShotType, setSelectedShotType] = useState<number>(1);
+  const [scenes, setScenes] = useState<Array<{
+    sceneId: string;
+    generationId: string;
+    startFrameUrl: string;
+    endFrameUrl?: string;
+    shotType: number;
+    status: 'processing' | 'ready' | 'error';
+    videoUrl?: string;
+    createdAt: Date;
+  }>>([]);
   const { execute: createProject } = useApi();
 
   useEffect(() => {
@@ -166,16 +176,76 @@ export default function Dashboard() {
       .subscribe();
   };
 
-  const handlePhotoSelect = (storageKey: string, type: "start" | "end") => {
+  const handlePhotoSelect = (photoUrl: string, type: "start" | "end") => {
     if (type === "start") {
-      setSelectedStart(storageKey);
+      setSelectedStart(photoUrl);
     } else {
-      setSelectedEnd(storageKey);
+      setSelectedEnd(photoUrl);
     }
     
     // Show toast for feedback when End is set without Start
-    if (type === "end" && storageKey && !selectedStart) {
+    if (type === "end" && photoUrl && !selectedStart) {
       toast.error("Set Start (S) first");
+    }
+  };
+
+  const handleSceneGenerate = async (sceneData: { 
+    startFrameUrl: string; 
+    endFrameUrl?: string; 
+    shotType: number; 
+  }) => {
+    const sceneId = crypto.randomUUID();
+    const generationId = crypto.randomUUID();
+    
+    // Create immediate scene card with processing state
+    const newScene = {
+      sceneId,
+      generationId,
+      startFrameUrl: sceneData.startFrameUrl,
+      endFrameUrl: sceneData.endFrameUrl,
+      shotType: sceneData.shotType,
+      status: 'processing' as const,
+      createdAt: new Date()
+    };
+    
+    setScenes(prev => [newScene, ...prev]);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Please sign in to generate scenes");
+      }
+
+      const requestBody = {
+        generationId,
+        sceneId,
+        startFrameUrl: sceneData.startFrameUrl,
+        endFrameUrl: sceneData.endFrameUrl || null,
+        shotType: sceneData.shotType
+      };
+
+      const response = await supabase.functions.invoke("create-scene", {
+        body: requestBody
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      toast.success("Scene generation started!", {
+        description: `Scene ID: ${sceneId.slice(0, 8)}...`
+      });
+    } catch (error: any) {
+      console.error("Error generating scene:", error);
+      
+      // Update scene status to error
+      setScenes(prev => prev.map(scene => 
+        scene.generationId === generationId 
+          ? { ...scene, status: 'error' as const }
+          : scene
+      ));
+      
+      toast.error(error.message || "Failed to generate scene");
     }
   };
 
@@ -225,6 +295,7 @@ export default function Dashboard() {
               selectedShotType={selectedShotType}
               onPhotoSelect={handlePhotoSelect}
               onShotTypeSelect={handleShotTypeSelect}
+              onSceneGenerate={handleSceneGenerate}
             />
           </div>
           
@@ -235,6 +306,8 @@ export default function Dashboard() {
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
               selectedShotType={selectedShotType}
+              scenes={scenes}
+              onSceneUpdate={setScenes}
             />
           </div>
         </div>

@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Video, RotateCcw, Trash2, Download, Play } from "lucide-react";
+import { Video, RotateCcw, Trash2, Download, Play, Loader2, Clock } from "lucide-react";
+import { SceneCard } from "./SceneCard";
 
 interface StorageScene {
   key: string;
@@ -37,6 +38,17 @@ interface VideoSectionProps {
   selectedStart: string;
   selectedEnd: string;
   selectedShotType: number;
+  scenes: Array<{
+    sceneId: string;
+    generationId: string;
+    startFrameUrl: string;
+    endFrameUrl?: string;
+    shotType: number;
+    status: 'processing' | 'ready' | 'error';
+    videoUrl?: string;
+    createdAt: Date;
+  }>;
+  onSceneUpdate: (updateFn: (prev: any[]) => any[]) => void;
 }
 
 export function VideoSection({
@@ -44,6 +56,8 @@ export function VideoSection({
   selectedStart,
   selectedEnd,
   selectedShotType,
+  scenes,
+  onSceneUpdate,
 }: VideoSectionProps) {
   const [storageScenes, setStorageScenes] = useState<StorageScene[]>([]);
   const [dbScenes, setDbScenes] = useState<Scene[]>([]);
@@ -313,6 +327,31 @@ export function VideoSection({
               </div>
             )}
 
+            {/* Current Session Scenes */}
+            {scenes.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                  Current Session Scenes
+                </h4>
+                <div className="space-y-4">
+                  {scenes.map((scene) => (
+                    <SceneCard
+                      key={scene.generationId}
+                      scene={scene}
+                      onRegenerate={() => {
+                        // TODO: Implement regeneration
+                        toast.success("Scene regeneration started!");
+                      }}
+                      onDelete={(sceneId) => {
+                        onSceneUpdate(prev => prev.filter(s => s.sceneId !== sceneId));
+                        toast.success("Scene removed from session");
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Generated Scenes (From Database) */}
             {dbScenes.length > 0 && (
               <div>
@@ -389,7 +428,7 @@ export function VideoSection({
             )}
 
             {/* Empty State */}
-            {storageScenes.length === 0 && dbScenes.length === 0 && !loading && (
+            {storageScenes.length === 0 && dbScenes.length === 0 && scenes.length === 0 && !loading && (
               <div className="text-center py-8">
                 <Video className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">No videos found</p>

@@ -49,33 +49,40 @@ async function logError(params: {
   }
 }
 
-// Validate schema
+// Validate schema for new URL-based approach
 function validateSceneRequest(body: any): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
   
-  if (!body.folder || typeof body.folder !== 'string') {
-    errors.push('folder is required and must be a string');
+  if (!body.generationId || typeof body.generationId !== 'string') {
+    errors.push('generationId is required and must be a string');
   }
   
-  if (!body.startKey || typeof body.startKey !== 'string') {
-    errors.push('startKey is required and must be a string');
+  if (!body.sceneId || typeof body.sceneId !== 'string') {
+    errors.push('sceneId is required and must be a string');
   }
   
-  if (body.endKey && typeof body.endKey !== 'string') {
-    errors.push('endKey must be a string');
+  if (!body.startFrameUrl || typeof body.startFrameUrl !== 'string') {
+    errors.push('startFrameUrl is required and must be a string');
+  }
+  
+  if (body.endFrameUrl && typeof body.endFrameUrl !== 'string') {
+    errors.push('endFrameUrl must be a string');
   }
   
   if (!body.shotType || typeof body.shotType !== 'number' || body.shotType < 1 || body.shotType > 6) {
     errors.push('shotType must be a number between 1 and 6');
   }
   
+  // Validate URLs
+  if (body.startFrameUrl && !body.startFrameUrl.startsWith('http')) {
+    errors.push('startFrameUrl must be a valid URL');
+  }
+  
+  if (body.endFrameUrl && !body.endFrameUrl.startsWith('http')) {
+    errors.push('endFrameUrl must be a valid URL');
+  }
+  
   return { isValid: errors.length === 0, errors };
-}
-
-// Validate storage keys belong to user
-function validateStorageKeys(userId: string, folder: string, keys: string[]): boolean {
-  const expectedPrefix = `Photos/${folder}/`;
-  return keys.every(key => key.startsWith(expectedPrefix));
 }
 
 // HMAC signature generation
@@ -163,7 +170,7 @@ serve(async (req) => {
       );
     }
 
-    const { folder, startKey, endKey, shotType } = body;
+    const { generationId, sceneId, startFrameUrl, endFrameUrl, shotType } = body;
     
     // Get user from auth
     const authHeader = req.headers.get("authorization");
@@ -217,33 +224,6 @@ serve(async (req) => {
       );
     }
 
-    // Validate storage keys belong to user
-    const keysToValidate = [startKey, ...(endKey ? [endKey] : [])];
-    if (!validateStorageKeys(user.id, folder, keysToValidate)) {
-      await logError({
-        route: '/create-scene',
-        method: 'POST',
-        status: 403,
-        code: 'RLS_DENIED',
-        message: 'Storage keys do not belong to user project',
-        correlationId,
-        userId: user.id,
-        safeContext: { folder, keysCount: keysToValidate.length }
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          error: { 
-            code: 'RLS_DENIED', 
-            message: 'You are not allowed to access these files',
-            correlationId 
-          },
-          ok: false 
-        }),
-        { status: 403, headers: responseHeaders }
-      );
-    }
-
     // Validate user is approved
     const { data: profile } = await supabase
       .from("profiles")
@@ -276,14 +256,15 @@ serve(async (req) => {
       );
     }
 
-    // Create scene record
+    // Create scene record with new URL-based data
     const { data: scene, error: sceneError } = await supabase
       .from("scenes")
       .insert({
+        id: sceneId,
         user_id: user.id,
-        folder,
-        start_key: startKey,
-        end_key: endKey,
+        folder: `cdn-scenes-${generationId}`,
+        start_key: startFrameUrl,
+        end_key: endFrameUrl,
         shot_type: shotType,
         status: "queued"
       })
@@ -300,7 +281,8 @@ serve(async (req) => {
         correlationId,
         userId: user.id,
         safeContext: { 
-          folder, 
+          generationId,
+          sceneId,
           shotType,
           dbError: sceneError?.message,
           dbCode: sceneError?.code 
@@ -320,14 +302,14 @@ serve(async (req) => {
       );
     }
 
-    // Prepare webhook payload for n8n
+    // Prepare webhook payload for n8n with new URL-based format
     const webhookPayload = {
-      sceneId: scene.id,
+      sceneId: sceneId,
+      generationId: generationId,
+      startFrameUrl: startFrameUrl,
+      endFrameUrl: endFrameUrl,
+      shotType: shotType,
       userId: user.id,
-      folder,
-      startKey,
-      endKey,
-      shotType,
       timestamp: new Date().toISOString(),
       correlationId
     };
@@ -419,6 +401,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         sceneId: scene.id,
+        generationId: generationId,
         message: "Scene creation started",
         ok: true
       }),

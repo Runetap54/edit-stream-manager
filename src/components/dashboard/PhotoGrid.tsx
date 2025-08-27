@@ -19,8 +19,9 @@ interface PhotoGridProps {
   selectedStart: string;
   selectedEnd: string;
   selectedShotType: number;
-  onPhotoSelect: (storageKey: string, type: "start" | "end") => void;
+  onPhotoSelect: (photoUrl: string, type: "start" | "end") => void;
   onShotTypeSelect: (shotType: number) => void;
+  onSceneGenerate: (sceneData: { startFrameUrl: string; endFrameUrl?: string; shotType: number }) => void;
 }
 
 const shotTypes = [
@@ -39,6 +40,7 @@ export function PhotoGrid({
   selectedShotType,
   onPhotoSelect,
   onShotTypeSelect,
+  onSceneGenerate,
 }: PhotoGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -106,23 +108,29 @@ export function PhotoGrid({
   // Hotkey handlers
   useHotkeys('s', () => {
     if (hoveredKey) {
-      if (selectedStart === hoveredKey) {
-        onPhotoSelect("", "start"); // Clear start if same image
-      } else {
-        onPhotoSelect(hoveredKey, "start");
+      const photo = photos.find(p => p.key === hoveredKey);
+      if (photo) {
+        if (selectedStart === photo.url) {
+          onPhotoSelect("", "start"); // Clear start if same image
+        } else {
+          onPhotoSelect(photo.url, "start");
+        }
       }
     }
-  }, { enableOnFormTags: false }, [hoveredKey, selectedStart, onPhotoSelect]);
+  }, { enableOnFormTags: false }, [hoveredKey, selectedStart, onPhotoSelect, photos]);
 
   useHotkeys('e', () => {
     if (hoveredKey) {
-      if (selectedEnd === hoveredKey) {
-        onPhotoSelect("", "end"); // Clear end if same image
-      } else {
-        onPhotoSelect(hoveredKey, "end");
+      const photo = photos.find(p => p.key === hoveredKey);
+      if (photo) {
+        if (selectedEnd === photo.url) {
+          onPhotoSelect("", "end"); // Clear end if same image
+        } else {
+          onPhotoSelect(photo.url, "end");
+        }
       }
     }
-  }, { enableOnFormTags: false }, [hoveredKey, selectedEnd, onPhotoSelect]);
+  }, { enableOnFormTags: false }, [hoveredKey, selectedEnd, onPhotoSelect, photos]);
 
   // Shot type hotkeys
   useHotkeys('1', () => onShotTypeSelect(1), { enableOnFormTags: false }, [onShotTypeSelect]);
@@ -132,11 +140,11 @@ export function PhotoGrid({
   useHotkeys('5', () => onShotTypeSelect(5), { enableOnFormTags: false }, [onShotTypeSelect]);
   useHotkeys('6', () => onShotTypeSelect(6), { enableOnFormTags: false }, [onShotTypeSelect]);
 
-  const handleImageClick = (storageKey: string, e: React.MouseEvent) => {
+  const handleImageClick = (photo: Photo, e: React.MouseEvent) => {
     if (e.shiftKey) {
-      onPhotoSelect(storageKey, "end");
+      onPhotoSelect(photo.url, "end");
     } else {
-      onPhotoSelect(storageKey, "start");
+      onPhotoSelect(photo.url, "start");
     }
   };
 
@@ -150,74 +158,14 @@ export function PhotoGrid({
   const handleGenerateScene = async () => {
     if (!canGenerateScene) return;
 
-    try {
-      setLoading(true);
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Please sign in to generate scenes");
-        return;
-      }
+    const sceneData = {
+      startFrameUrl: selectedStart,
+      endFrameUrl: selectedEnd || undefined,
+      shotType: selectedShotType
+    };
 
-      const requestBody: any = {
-        folder: projectName,
-        startKey: selectedStart,
-        shotType: selectedShotType
-      };
-
-      // Only include endKey if it's set
-      if (selectedEnd) {
-        requestBody.endKey = selectedEnd;
-      }
-
-      const response = await supabase.functions.invoke("create-scene", {
-        body: requestBody
-      });
-
-      if (response.error) {
-        // Parse the error response properly
-        const error = response.error;
-        
-        // Handle specific error cases with better UX
-        if (error.code === 'N8N_RENDER_FAILED') {
-          toast.error("Render service is unreachable", {
-            description: error.correlationId,
-            action: {
-              label: 'Copy Details',
-              onClick: () => {
-                navigator.clipboard.writeText(
-                  `Error: ${error.code}\nID: ${error.correlationId}\nEndpoint: ${error.detail?.endpoint}`
-                );
-                toast.success('Error details copied');
-              }
-            }
-          });
-        } else if (error.code === 'RLS_DENIED') {
-          toast.error("You are not allowed to write to this project", {
-            description: error.correlationId
-          });
-        } else if (error.code === 'VALIDATION_ERROR') {
-          toast.error("Please check your selections and try again", {
-            description: error.detail?.fields?.join(', ') || error.correlationId
-          });
-        } else {
-          toast.error(error.message || "Failed to generate scene", {
-            description: error.correlationId
-          });
-        }
-        
-        return;
-      }
-
-      toast.success("Scene generation started!", {
-        description: response.data.sceneId ? `Scene ID: ${response.data.sceneId}` : undefined
-      });
-    } catch (error: any) {
-      console.error("Error generating scene:", error);
-      toast.error("Network error - please check your connection");
-    } finally {
-      setLoading(false);
-    }
+    // Call parent handler to create immediate scene card
+    onSceneGenerate(sceneData);
   };
 
   if (!projectName) {
@@ -298,8 +246,8 @@ export function PhotoGrid({
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {photos.map((photo) => {
-              const isStart = selectedStart === photo.key;
-              const isEnd = selectedEnd === photo.key;
+              const isStart = selectedStart === photo.url;
+              const isEnd = selectedEnd === photo.url;
               const isHovered = hoveredKey === photo.key;
               const url = photo.url;
               const isSameImage = isStart && isEnd;
@@ -311,7 +259,7 @@ export function PhotoGrid({
                   className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-105 ${
                     isStart || isEnd ? "ring-2 ring-primary shadow-lg" : ""
                   }`}
-                  onClick={(e) => handleImageClick(photo.key, e)}
+                  onClick={(e) => handleImageClick(photo, e)}
                   onMouseEnter={() => setHoveredKey(photo.key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   title={isSameImage ? "Start = End (single frame)" : ""}
