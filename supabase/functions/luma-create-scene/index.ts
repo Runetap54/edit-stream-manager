@@ -89,13 +89,13 @@ function extractStoragePath(cdnUrl: string): string {
 
 async function callLumaAPI(payload: any, correlationId: string): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    console.log(`[${correlationId}] Calling Luma Dream Machine v1 API with payload:`, JSON.stringify(payload, null, 2));
+    console.log(`[${correlationId}] Calling Luma Dream Machine API with payload:`, JSON.stringify(payload, null, 2));
     
     const response = await fetch(`${lumaApiBase}/generations`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lumaApiKey}`,
-        'Content-Type': 'application/json',
+        'authorization': `Bearer ${lumaApiKey}`,
+        'content-type': 'application/json',
       },
       body: JSON.stringify(payload)
     });
