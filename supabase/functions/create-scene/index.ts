@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const webhookSecret = Deno.env.get("N8N_WEBHOOK_SECRET")!;
+const webhookSecret = Deno.env.get("N8N_HMAC_SECRET")!;
 const renderWebhookUrl = Deno.env.get("N8N_RENDER_WEBHOOK_URL")!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
