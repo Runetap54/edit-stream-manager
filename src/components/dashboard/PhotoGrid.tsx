@@ -7,9 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Images, Play, Loader2, Upload, FolderOpen, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Images, Play, Loader2, Upload, FolderOpen, X, Settings } from "lucide-react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useApi } from "@/hooks/useApi";
+import { useShotTypes } from "@/hooks/useShotTypes";
+import { ShotTypesManager } from "@/components/dashboard/ShotTypesManager";
 
 interface Photo {
   key: string;
@@ -21,27 +23,20 @@ interface PhotoGridProps {
   projectName: string;
   selectedStart: string;
   selectedEnd: string;
-  selectedShotType: number;
+  selectedShotTypeId: string | null;
   onPhotoSelect: (photoUrl: string, type: "start" | "end") => void;
-  onShotTypeSelect: (shotType: number) => void;
-  onSceneGenerate: (sceneData: { startFrameUrl: string; endFrameUrl?: string; shotType: number }) => void;
+  onShotTypeSelect: (shotTypeId: string) => void;
+  onSceneGenerate: (sceneData: { startFrameUrl: string; endFrameUrl?: string; shotTypeId: string }) => void;
   onUploadComplete: (folder: string, files: string[]) => void;
 }
 
-const shotTypes = [
-  { id: 1, name: "Wide Shot", key: "1" },
-  { id: 2, name: "Medium Shot", key: "2" },
-  { id: 3, name: "Close-up", key: "3" },
-  { id: 4, name: "Extreme Close-up", key: "4" },
-  { id: 5, name: "Over Shoulder", key: "5" },
-  { id: 6, name: "Point of View", key: "6" },
-];
+// Removed static shot types - now using dynamic shot types from database
 
 export function PhotoGrid({
   projectName,
   selectedStart,
   selectedEnd,
-  selectedShotType,
+  selectedShotTypeId,
   onPhotoSelect,
   onShotTypeSelect,
   onSceneGenerate,
@@ -51,6 +46,7 @@ export function PhotoGrid({
   const [loading, setLoading] = useState(false);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const { execute: fetchPhotos } = useApi();
+  const { shotTypes, loading: shotTypesLoading } = useShotTypes();
   
   // Upload functionality states
   const [folderName, setFolderName] = useState("");
@@ -145,13 +141,11 @@ export function PhotoGrid({
     }
   }, { enableOnFormTags: false }, [hoveredKey, selectedEnd, onPhotoSelect, photos]);
 
-  // Shot type hotkeys
-  useHotkeys('1', () => onShotTypeSelect(1), { enableOnFormTags: false }, [onShotTypeSelect]);
-  useHotkeys('2', () => onShotTypeSelect(2), { enableOnFormTags: false }, [onShotTypeSelect]);
-  useHotkeys('3', () => onShotTypeSelect(3), { enableOnFormTags: false }, [onShotTypeSelect]);
-  useHotkeys('4', () => onShotTypeSelect(4), { enableOnFormTags: false }, [onShotTypeSelect]);
-  useHotkeys('5', () => onShotTypeSelect(5), { enableOnFormTags: false }, [onShotTypeSelect]);
-  useHotkeys('6', () => onShotTypeSelect(6), { enableOnFormTags: false }, [onShotTypeSelect]);
+  // Dynamic shot type hotkeys
+  shotTypes.forEach(shotType => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useHotkeys(shotType.hotkey, () => onShotTypeSelect(shotType.id), { enableOnFormTags: false }, [onShotTypeSelect, shotType.id, shotType.hotkey]);
+  });
 
   const handleImageClick = (photo: Photo, e: React.MouseEvent) => {
     if (e.shiftKey) {
@@ -169,12 +163,12 @@ export function PhotoGrid({
   };
 
   const handleGenerateScene = async () => {
-    if (!canGenerateScene) return;
+    if (!canGenerateScene || !selectedShotTypeId) return;
 
     const sceneData = {
       startFrameUrl: selectedStart,
       endFrameUrl: selectedEnd || undefined,
-      shotType: selectedShotType
+      shotTypeId: selectedShotTypeId
     };
 
     // Call parent handler to create immediate scene card
@@ -419,20 +413,52 @@ export function PhotoGrid({
       <CardContent className="space-y-4">
         {/* Shot Type Selection */}
         <div className="space-y-2">
-          <div className="text-sm font-medium">Shot Type</div>
-          <div className="flex flex-wrap gap-2">
-            {shotTypes.map((type) => (
-              <Button
-                key={type.id}
-                variant={selectedShotType === type.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => onShotTypeSelect(type.id)}
-                className="text-xs"
-              >
-                {type.key}. {type.name}
-              </Button>
-            ))}
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">Shot Type</div>
+            <ShotTypesManager 
+              trigger={
+                <Button variant="ghost" size="sm" className="h-6 px-2">
+                  <Settings className="w-3 h-3" />
+                </Button>
+              }
+            />
           </div>
+          {shotTypesLoading ? (
+            <div className="flex space-x-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-8 w-20 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          ) : shotTypes.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-muted-foreground mb-2">No shot types available</p>
+              <ShotTypesManager 
+                trigger={
+                  <Button variant="outline" size="sm">
+                    Create Shot Types
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {shotTypes.map((shotType) => (
+                <Button
+                  key={shotType.id}
+                  variant={selectedShotTypeId === shotType.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onShotTypeSelect(shotType.id)}
+                  className="text-xs"
+                  title={shotType.prompt_template}
+                >
+                  <Badge variant="secondary" className="text-xs mr-1">
+                    {shotType.hotkey}
+                  </Badge>
+                  {shotType.name}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Photo Grid */}
@@ -546,7 +572,7 @@ export function PhotoGrid({
         <div className="flex flex-col items-center pt-4 space-y-2">
           <Button
             onClick={handleGenerateScene}
-            disabled={!canGenerateScene || loading}
+            disabled={!canGenerateScene || loading || !selectedShotTypeId}
             className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
           >
             {loading ? (
@@ -567,12 +593,25 @@ export function PhotoGrid({
           {selectedEnd && !selectedStart && (
             <p className="text-xs text-orange-500">Set Start (S) first</p>
           )}
+          {!selectedShotTypeId && shotTypes.length > 0 && (
+            <p className="text-xs text-orange-500">Select a shot type</p>
+          )}
         </div>
 
         {/* Instructions */}
         <div className="text-xs text-muted-foreground text-center space-y-1">
           <p>Hover image then press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">S</kbd> to set Start, <kbd className="px-1 py-0.5 bg-muted rounded text-xs">E</kbd> to set End. End is optional.</p>
-          <p>Click to set Start • Shift+Click to set End • Keys <kbd className="px-1 py-0.5 bg-muted rounded text-xs">1-6</kbd> for shot type</p>
+          <p>Click to set Start • Shift+Click to set End • Use hotkeys to select shot types</p>
+          {shotTypes.length > 0 && (
+            <div className="flex justify-center flex-wrap gap-1 mt-1">
+              {shotTypes.slice(0, 6).map(shotType => (
+                <kbd key={shotType.id} className="px-1 py-0.5 bg-muted rounded text-xs">
+                  {shotType.hotkey}
+                </kbd>
+              ))}
+              {shotTypes.length > 6 && <span className="text-xs">...</span>}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

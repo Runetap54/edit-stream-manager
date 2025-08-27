@@ -27,7 +27,7 @@ export default function Dashboard() {
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [selectedStart, setSelectedStart] = useState<string>("");
   const [selectedEnd, setSelectedEnd] = useState<string>("");
-  const [selectedShotType, setSelectedShotType] = useState<number>(1);
+  const [selectedShotTypeId, setSelectedShotTypeId] = useState<string | null>(null);
   const [scenes, setScenes] = useState<Array<{
     sceneId: string;
     generationId: string;
@@ -121,7 +121,7 @@ export default function Dashboard() {
     setUploadedFiles(files);
     setSelectedStart("");
     setSelectedEnd("");
-    setSelectedShotType(1);
+    setSelectedShotTypeId(null);
     
     // Create/update project in database
     await createProject(async () => {
@@ -145,7 +145,7 @@ export default function Dashboard() {
     setUploadedFiles([]);
     setSelectedStart("");
     setSelectedEnd("");
-    setSelectedShotType(1);
+    setSelectedShotTypeId(null);
     
     // Set up realtime subscription for this project's photos
     setupPhotoSubscription(projectName);
@@ -192,7 +192,7 @@ export default function Dashboard() {
   const handleSceneGenerate = async (sceneData: { 
     startFrameUrl: string; 
     endFrameUrl?: string; 
-    shotType: number; 
+    shotTypeId: string; 
   }) => {
     const sceneId = crypto.randomUUID();
     const generationId = crypto.randomUUID();
@@ -203,7 +203,7 @@ export default function Dashboard() {
       generationId,
       startFrameUrl: sceneData.startFrameUrl,
       endFrameUrl: sceneData.endFrameUrl,
-      shotType: sceneData.shotType,
+      shotType: 1, // Legacy field for compatibility
       status: 'processing' as const,
       createdAt: new Date()
     };
@@ -222,14 +222,13 @@ export default function Dashboard() {
       }
 
       const requestBody = {
-        generationId,
-        sceneId,
-        startFrameUrl: sceneData.startFrameUrl,
-        endFrameUrl: sceneData.endFrameUrl || null,
-        shotType: sceneData.shotType
+        folder: currentProject,
+        start_key: sceneData.startFrameUrl,
+        end_key: sceneData.endFrameUrl || null,
+        shot_type_id: sceneData.shotTypeId
       };
 
-      const response = await supabase.functions.invoke("create-scene", {
+      const response = await supabase.functions.invoke("luma-create-scene", {
         body: requestBody
       });
 
@@ -254,8 +253,8 @@ export default function Dashboard() {
     }
   };
 
-  const handleShotTypeSelect = (shotType: number) => {
-    setSelectedShotType(shotType);
+  const handleShotTypeSelect = (shotTypeId: string) => {
+    setSelectedShotTypeId(shotTypeId);
   };
 
   if (loading) {
@@ -294,7 +293,7 @@ export default function Dashboard() {
               projectName={currentProject}
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
-              selectedShotType={selectedShotType}
+              selectedShotTypeId={selectedShotTypeId}
               onPhotoSelect={handlePhotoSelect}
               onShotTypeSelect={handleShotTypeSelect}
               onSceneGenerate={handleSceneGenerate}
@@ -308,7 +307,7 @@ export default function Dashboard() {
               folder={currentProject}
               selectedStart={selectedStart}
               selectedEnd={selectedEnd}
-              selectedShotType={selectedShotType}
+              selectedShotTypeId={selectedShotTypeId}
               scenes={scenes}
               onSceneUpdate={setScenes}
             />

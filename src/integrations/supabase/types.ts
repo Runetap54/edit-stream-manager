@@ -262,6 +262,9 @@ export type Database = {
           end_key: string
           folder: string
           id: string
+          luma_error: string | null
+          luma_job_id: string | null
+          luma_status: string | null
           shot_type: number
           signed_url_expires_at: string | null
           start_frame_signed_url: string | null
@@ -277,6 +280,9 @@ export type Database = {
           end_key: string
           folder: string
           id?: string
+          luma_error?: string | null
+          luma_job_id?: string | null
+          luma_status?: string | null
           shot_type: number
           signed_url_expires_at?: string | null
           start_frame_signed_url?: string | null
@@ -292,6 +298,9 @@ export type Database = {
           end_key?: string
           folder?: string
           id?: string
+          luma_error?: string | null
+          luma_job_id?: string | null
+          luma_status?: string | null
           shot_type?: number
           signed_url_expires_at?: string | null
           start_frame_signed_url?: string | null
@@ -309,6 +318,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      shot_types: {
+        Row: {
+          created_at: string | null
+          hotkey: string
+          id: string
+          name: string
+          owner_id: string
+          prompt_template: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          hotkey: string
+          id?: string
+          name: string
+          owner_id: string
+          prompt_template: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          hotkey?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          prompt_template?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
