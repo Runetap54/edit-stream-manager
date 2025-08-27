@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.create-scene]
 verify_jwt = true
 
+[functions.scene-status]
+verify_jwt = false
+
 [functions.projects-from-storage]
 verify_jwt = true
 

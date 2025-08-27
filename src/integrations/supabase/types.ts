@@ -174,6 +174,51 @@ export type Database = {
         }
         Relationships: []
       }
+      scene_generations: {
+        Row: {
+          created_at: string
+          end_frame_url: string | null
+          error_code: string | null
+          error_message: string | null
+          generation_id: string
+          progress_pct: number | null
+          scene_id: string
+          shot_type: number
+          start_frame_url: string
+          status: string
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          end_frame_url?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          generation_id?: string
+          progress_pct?: number | null
+          scene_id: string
+          shot_type: number
+          start_frame_url: string
+          status?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          end_frame_url?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          generation_id?: string
+          progress_pct?: number | null
+          scene_id?: string
+          shot_type?: number
+          start_frame_url?: string
+          status?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: []
+      }
       scene_versions: {
         Row: {
           created_at: string | null

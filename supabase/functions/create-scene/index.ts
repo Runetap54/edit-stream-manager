@@ -316,39 +316,35 @@ serve(async (req) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // Create scene record with storage paths and signed URLs
-    const { data: scene, error: sceneError } = await supabase
-      .from("scenes")
+    // Create scene_generation record 
+    const { data: generation, error: generationError } = await supabase
+      .from("scene_generations")
       .insert({
-        id: sceneId,
-        user_id: user.id,
-        folder: `scenes-${Date.now()}`,
-        start_key: startStoragePath,
-        end_key: endStoragePath,
-        start_frame_signed_url: startSignedUrl,
-        end_frame_signed_url: endSignedUrl,
-        signed_url_expires_at: expiresAt.toISOString(),
+        generation_id: generationId,
+        scene_id: sceneId,
+        start_frame_url: startSignedUrl,
+        end_frame_url: endSignedUrl,
         shot_type: shotType,
         status: "queued"
       })
       .select()
       .single();
 
-    if (sceneError || !scene) {
+    if (generationError || !generation) {
       await logError({
         route: '/create-scene',
         method: 'POST',
         status: 500,
         code: 'SERVER_ERROR',
-        message: 'Failed to create scene record',
+        message: 'Failed to create scene generation record',
         correlationId,
         userId: user.id,
         safeContext: { 
           generationId,
           sceneId,
           shotType,
-          dbError: sceneError?.message,
-          dbCode: sceneError?.code 
+          dbError: generationError?.message,
+          dbCode: generationError?.code 
         }
       });
       
@@ -356,7 +352,7 @@ serve(async (req) => {
         JSON.stringify({ 
           error: { 
             code: 'SERVER_ERROR', 
-            message: 'Failed to create scene',
+            message: 'Failed to create scene generation',
             correlationId 
           },
           ok: false 
@@ -413,7 +409,7 @@ serve(async (req) => {
             webhookUrl: renderWebhookUrl,
             upstreamStatus: n8nResponse.status,
             upstreamBody: errorBody.substring(0, 500),
-            sceneId: scene.id
+            generationId: generation.generation_id
           }
         });
         
@@ -442,7 +438,7 @@ serve(async (req) => {
         safeContext: { 
           webhookUrl: renderWebhookUrl,
           errorType: n8nError.name,
-          sceneId: scene.id
+          generationId: generation.generation_id
         }
       });
       
@@ -463,9 +459,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        sceneId: scene.id,
-        generationId: generationId,
-        message: "Scene creation started",
+        sceneId: sceneId,
+        generationId: generation.generation_id,
+        message: "Scene generation started",
         ok: true
       }),
       { headers: responseHeaders }

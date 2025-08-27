@@ -7,7 +7,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Video, RotateCcw, Trash2, Download, Play, History } from "lucide-react";
-import { refreshSceneSignedUrls, isSignedUrlExpired } from "@/lib/signedUrls";
 
 interface StorageScene {
   key: string;
@@ -17,6 +16,7 @@ interface StorageScene {
 
 interface Scene {
   id: string;
+  user_id: string;
   folder: string;
   start_key: string;
   end_key: string;
@@ -26,15 +26,22 @@ interface Scene {
   start_frame_signed_url?: string;
   end_frame_signed_url?: string;
   signed_url_expires_at?: string;
-  versions: SceneVersion[];
+  generations: SceneGeneration[];
 }
 
-interface SceneVersion {
-  id: string;
+interface SceneGeneration {
+  generation_id: string;
   scene_id: string;
-  version: number;
+  start_frame_url: string;
+  end_frame_url: string | null;
+  shot_type: number;
+  status: string;
+  progress_pct: number | null;
   video_url: string | null;
+  error_code: string | null;
+  error_message: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 interface VideoSectionProps {
@@ -74,37 +81,48 @@ export function VideoSection({
     if (folder) {
       loadDbScenes();
       
-      // Set up real-time subscription for scene and scene_versions updates
-      const channel = supabase
-        .channel('scene-realtime')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'scenes',
-            filter: `folder=eq.${folder}`
-          },
-          () => {
-            loadDbScenes();
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'scene_versions'
-          },
-          () => {
-            loadDbScenes();
-          }
-        )
-        .subscribe();
+      // Set up real-time subscription for scene and scene_generations updates
+      const setupRealtime = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      return () => {
-        supabase.removeChannel(channel);
+        const channel = supabase
+          .channel('scene-realtime')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'scenes',
+              filter: `user_id=eq.${user.id}`
+            },
+            () => {
+              loadDbScenes();
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'scene_generations'
+            },
+            () => {
+              loadDbScenes();
+            }
+          )
+          .subscribe();
+
+        return channel;
       };
+
+      setupRealtime().then(channel => {
+        if (channel) {
+          return () => {
+            supabase.removeChannel(channel);
+          };
+        }
+      });
     }
   }, [folder]);
 
@@ -113,13 +131,16 @@ export function VideoSection({
     
     setLoading(true);
     try {
+      // Get all scenes for the user with their generations
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data: scenesData, error } = await supabase
         .from("scenes")
         .select(`
-          *,
-          scene_versions (*)
+          *
         `)
-        .eq("folder", folder)
+        .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
@@ -129,25 +150,28 @@ export function VideoSection({
         return;
       }
 
-      const scenesWithVersions = scenesData?.map(scene => ({
+      // Get generations for each scene
+      const sceneIds = scenesData?.map(s => s.id) || [];
+      const { data: generationsData, error: generationsError } = await supabase
+        .from("scene_generations")
+        .select("*")
+        .in("scene_id", sceneIds)
+        .order("created_at", { ascending: false });
+
+      if (generationsError) {
+        console.error("Error loading scene generations:", generationsError);
+      }
+
+      const scenesWithGenerations = scenesData?.map(scene => ({
         ...scene,
-        versions: (scene.scene_versions || []).sort((a, b) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
+        generations: (generationsData || []).filter(g => g.scene_id === scene.id)
       })) || [];
 
-      // Refresh expired signed URLs in background
-      scenesWithVersions.forEach(async (scene) => {
-        if (isSignedUrlExpired(scene.signed_url_expires_at)) {
-          await refreshSceneSignedUrls(scene.id);
-        }
-      });
-
-      setDbScenes(scenesWithVersions);
+      setDbScenes(scenesWithGenerations);
       
       // Auto-select the first scene if none selected and scenes exist
-      if (scenesWithVersions.length > 0 && !selectedSceneId) {
-        const firstSceneId = scenesWithVersions[0].id;
+      if (scenesWithGenerations.length > 0 && !selectedSceneId) {
+        const firstSceneId = scenesWithGenerations[0].id;
         setSelectedSceneId(firstSceneId);
         setSearchParams(prev => {
           const newParams = new URLSearchParams(prev);
@@ -178,9 +202,9 @@ export function VideoSection({
     }
   };
 
-  const getLatestVersion = (scene: Scene) => {
-    if (scene.versions.length === 0) return null;
-    return scene.versions[0]; // Already sorted by created_at desc
+  const getLatestGeneration = (scene: Scene) => {
+    if (scene.generations.length === 0) return null;
+    return scene.generations[0]; // Already sorted by created_at desc
   };
 
   const handleSceneSelect = (sceneId: string) => {
@@ -194,7 +218,7 @@ export function VideoSection({
 
   const handleRegenerateScene = async (sceneId: string) => {
     try {
-      // Call the create-scene edge function for regeneration
+      // Find the scene to regenerate
       const scene = dbScenes.find(s => s.id === sceneId);
       if (!scene) {
         toast.error("Scene not found");
@@ -206,11 +230,12 @@ export function VideoSection({
         throw new Error("Please sign in to regenerate scenes");
       }
 
+      const latestGeneration = getLatestGeneration(scene);
       const requestBody = {
         generationId: crypto.randomUUID(),
         sceneId: scene.id,
-        startFrameUrl: scene.start_frame_signed_url || scene.start_key,
-        endFrameUrl: scene.end_frame_signed_url || scene.end_key,
+        startFrameUrl: latestGeneration?.start_frame_url || scene.start_frame_signed_url || scene.start_key,
+        endFrameUrl: latestGeneration?.end_frame_url || scene.end_frame_signed_url || scene.end_key,
         shotType: scene.shot_type
       };
 
@@ -229,13 +254,14 @@ export function VideoSection({
     }
   };
 
-  const handleRevertToVersion = async (sceneId: string, versionId: string) => {
+  const handleRevertToGeneration = async (sceneId: string, generationId: string) => {
     try {
-      // TODO: Switch to previous version
-      toast.success("Reverted to previous version");
+      // TODO: Switch to previous generation - this could involve updating UI state only
+      // For now, just show a success message
+      toast.success("Reverted to previous generation");
     } catch (error) {
-      console.error("Error reverting version:", error);
-      toast.error("Failed to revert version");
+      console.error("Error reverting generation:", error);
+      toast.error("Failed to revert generation");
     }
   };
 
@@ -287,11 +313,10 @@ export function VideoSection({
     }
   };
 
-  // Combined scenes from session and database, filtered by current folder
+  // Combined scenes from session and database
   const allScenes = [
-    // Session scenes (temporary, processing)
+    // Session scenes (temporary, processing) - only include if not in DB yet
     ...scenes.filter(scene => 
-      // Only include session scenes that don't have a corresponding DB scene yet
       !dbScenes.some(dbScene => dbScene.id === scene.sceneId)
     ).map((scene, index) => ({
       id: scene.sceneId,
@@ -302,20 +327,20 @@ export function VideoSection({
       videoUrl: scene.videoUrl,
       type: 'session' as const,
       createdAt: scene.createdAt,
-      versions: []
+      generations: []
     })),
     // Database scenes
     ...dbScenes.map((scene) => {
-      const latestVersion = getLatestVersion(scene);
+      const latestGeneration = getLatestGeneration(scene);
       return {
         id: scene.id,
-        startFrameUrl: scene.start_frame_signed_url || scene.start_key,
-        endFrameUrl: scene.end_frame_signed_url || scene.end_key,
+        startFrameUrl: latestGeneration?.start_frame_url || scene.start_frame_signed_url || scene.start_key,
+        endFrameUrl: latestGeneration?.end_frame_url || scene.end_frame_signed_url || scene.end_key,
         shotType: scene.shot_type,
-        status: scene.status,
-        videoUrl: latestVersion?.video_url,
+        status: latestGeneration?.status || scene.status,
+        videoUrl: latestGeneration?.video_url,
         type: 'database' as const,
-        versions: scene.versions,
+        generations: scene.generations,
         createdAt: new Date(scene.created_at)
       };
     })
@@ -434,9 +459,9 @@ export function VideoSection({
                     <Badge className={getStatusColor(selectedScene.status)}>
                       {selectedScene.status}
                     </Badge>
-                    {selectedScene.type === 'database' && selectedScene.versions && (
+                    {selectedScene.type === 'database' && selectedScene.generations && (
                       <span className="text-sm text-muted-foreground">
-                        v{selectedScene.versions.length || 1}
+                        v{selectedScene.generations.length || 1}
                       </span>
                     )}
                   </div>
@@ -452,11 +477,11 @@ export function VideoSection({
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Regenerate
                   </Button>
-                  {selectedScene.type === 'database' && selectedScene.versions && selectedScene.versions.length > 1 && (
+                  {selectedScene.type === 'database' && selectedScene.generations && selectedScene.generations.length > 1 && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleRevertToVersion(selectedScene.id, selectedScene.versions[selectedScene.versions.length - 2]?.id)}
+                      onClick={() => handleRevertToGeneration(selectedScene.id, selectedScene.generations[selectedScene.generations.length - 2]?.generation_id)}
                     >
                       <History className="w-4 h-4 mr-2" />
                       Back to Old Version
@@ -493,20 +518,20 @@ export function VideoSection({
                 </div>
               )}
 
-              {/* Version History (if available) */}
-              {selectedScene.type === 'database' && selectedScene.versions && selectedScene.versions.length > 1 && (
+              {/* Generation History (if available) */}
+              {selectedScene.type === 'database' && selectedScene.generations && selectedScene.generations.length > 1 && (
                 <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Version History</h4>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Generation History</h4>
                   <div className="flex space-x-2">
-                    {selectedScene.versions.map((version) => (
+                    {selectedScene.generations.map((generation, index) => (
                       <Button
-                        key={version.id}
+                        key={generation.generation_id}
                         variant="outline"
                         size="sm"
                         className="text-xs"
-                        onClick={() => handleRevertToVersion(selectedScene.id, version.id)}
+                        onClick={() => handleRevertToGeneration(selectedScene.id, generation.generation_id)}
                       >
-                        v{version.version}
+                        v{selectedScene.generations.length - index}
                       </Button>
                     ))}
                   </div>
