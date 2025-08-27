@@ -331,20 +331,21 @@ export function VideoSection({
             {scenes.length > 0 && (
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground mb-3">
-                  Current Session Scenes
+                  Video Scenes
                 </h4>
-                <div className="space-y-4">
-                  {scenes.map((scene) => (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {scenes.map((scene, index) => (
                     <SceneCard
                       key={scene.generationId}
                       scene={scene}
+                      sceneNumber={index + 1}
                       onRegenerate={() => {
                         // TODO: Implement regeneration
                         toast.success("Scene regeneration started!");
                       }}
-                      onDelete={(sceneId) => {
-                        onSceneUpdate(prev => prev.filter(s => s.sceneId !== sceneId));
-                        toast.success("Scene removed from session");
+                      onRevertVersion={(sceneId) => {
+                        // TODO: Implement version revert
+                        toast.success("Reverted to previous version");
                       }}
                     />
                   ))}

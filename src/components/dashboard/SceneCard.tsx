@@ -1,7 +1,6 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Video, RotateCcw, Trash2, Loader2, Clock, AlertCircle } from "lucide-react";
+import { Video, RotateCcw, History, Loader2, AlertCircle } from "lucide-react";
 
 const shotTypeNames: Record<number, string> = {
   1: "Wide Shot",
@@ -23,21 +22,22 @@ interface SceneCardProps {
     videoUrl?: string;
     createdAt: Date;
   };
+  sceneNumber: number;
   onRegenerate?: (sceneId: string) => void;
-  onDelete?: (sceneId: string) => void;
+  onRevertVersion?: (sceneId: string) => void;
 }
 
-export function SceneCard({ scene, onRegenerate, onDelete }: SceneCardProps) {
+export function SceneCard({ scene, sceneNumber, onRegenerate, onRevertVersion }: SceneCardProps) {
   const getStatusIcon = () => {
     switch (scene.status) {
       case 'processing':
-        return <Loader2 className="w-4 h-4 animate-spin" />;
+        return <Loader2 className="w-3 h-3 animate-spin" />;
       case 'ready':
-        return <Video className="w-4 h-4" />;
+        return <Video className="w-3 h-3" />;
       case 'error':
-        return <AlertCircle className="w-4 h-4" />;
+        return <AlertCircle className="w-3 h-3" />;
       default:
-        return <Clock className="w-4 h-4" />;
+        return <Video className="w-3 h-3" />;
     }
   };
 
@@ -50,104 +50,87 @@ export function SceneCard({ scene, onRegenerate, onDelete }: SceneCardProps) {
       case 'error':
         return 'bg-red-500';
       default:
-        return 'bg-gray-500';
+        return 'bg-muted';
     }
   };
 
   return (
-    <Card className="border-border/50">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <Badge className={`${getStatusColor()} text-white`}>
-                {getStatusIcon()}
-                <span className="ml-1 capitalize">{scene.status}</span>
-              </Badge>
-              <span className="text-sm text-muted-foreground">
-                {shotTypeNames[scene.shotType]}
-              </span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              ID: {scene.sceneId.slice(0, 8)}...
-            </div>
-          </div>
-          
-          <div className="flex space-x-1">
-            {scene.status !== 'processing' && onRegenerate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onRegenerate(scene.sceneId)}
-              >
-                <RotateCcw className="w-4 h-4" />
-              </Button>
-            )}
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDelete(scene.sceneId)}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-        </div>
+    <div className="relative aspect-square rounded-lg overflow-hidden bg-background border border-border transition-all hover:scale-105 hover:shadow-lg">
+      {/* Scene Number Badge */}
+      <Badge className="absolute top-2 left-2 z-10 bg-background/90 text-foreground border">
+        Scene {sceneNumber}
+      </Badge>
+      
+      {/* Status Badge */}
+      <Badge className={`absolute top-2 right-2 z-10 text-white ${getStatusColor()}`}>
+        {getStatusIcon()}
+        <span className="ml-1 text-xs">{scene.status}</span>
+      </Badge>
 
-        {/* Frame preview row */}
-        <div className="flex items-center space-x-2 mb-3">
-          <div className="relative">
+      {/* Video Content */}
+      {scene.status === 'ready' && scene.videoUrl ? (
+        <video
+          src={scene.videoUrl}
+          controls
+          className="w-full h-full object-cover"
+          preload="metadata"
+          poster={scene.startFrameUrl}
+        />
+      ) : (
+        <div className="w-full h-full bg-muted flex items-center justify-center relative">
+          {/* Thumbnail Preview */}
+          {scene.startFrameUrl && (
             <img 
               src={scene.startFrameUrl} 
-              alt="Start frame"
-              className="w-16 h-16 object-cover rounded"
+              alt="Scene preview"
+              className="w-full h-full object-cover opacity-50"
             />
-            <Badge className="absolute -top-1 -left-1 bg-green-500 text-white text-xs px-1">
-              S
-            </Badge>
-          </div>
-          
-          {scene.endFrameUrl && (
-            <>
-              <div className="text-muted-foreground">→</div>
-              <div className="relative">
-                <img 
-                  src={scene.endFrameUrl} 
-                  alt="End frame"
-                  className="w-16 h-16 object-cover rounded"
-                />
-                <Badge className="absolute -top-1 -left-1 bg-blue-500 text-white text-xs px-1">
-                  E
-                </Badge>
-              </div>
-            </>
           )}
-        </div>
-        
-        {/* Video Preview */}
-        {scene.status === 'ready' && scene.videoUrl ? (
-          <div className="aspect-video bg-black rounded-lg overflow-hidden">
-            <video
-              src={scene.videoUrl}
-              controls
-              className="w-full h-full"
-              preload="metadata"
-            />
-          </div>
-        ) : (
-          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
+          
+          {/* Processing Overlay */}
+          <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
             <div className="text-center">
               {getStatusIcon()}
-              <p className="text-sm text-muted-foreground mt-2">
-                {scene.status === 'processing' && 'Generating video...'}
-                {scene.status === 'error' && 'Generation failed'}
-                {scene.status === 'ready' && !scene.videoUrl && 'Video pending'}
+              <p className="text-xs text-muted-foreground mt-1">
+                {scene.status === 'processing' && 'Processing...'}
+                {scene.status === 'error' && 'Failed'}
+                {scene.status === 'ready' && !scene.videoUrl && 'Pending'}
               </p>
             </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="absolute bottom-2 left-2 right-2 flex justify-between">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => onRegenerate?.(scene.sceneId)}
+          disabled={scene.status === 'processing'}
+          className="bg-background/90 backdrop-blur-sm text-xs px-2 py-1 h-auto"
+        >
+          <RotateCcw className="w-3 h-3 mr-1" />
+          Regenerate
+        </Button>
+        
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => onRevertVersion?.(scene.sceneId)}
+          className="bg-background/90 backdrop-blur-sm text-xs px-2 py-1 h-auto"
+        >
+          <History className="w-3 h-3 mr-1" />
+          Previous
+        </Button>
+      </div>
+
+      {/* Shot Type Label */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+        <div className="text-white text-xs truncate">
+          {shotTypeNames[scene.shotType]}
+        </div>
+      </div>
+    </div>
   );
 }
