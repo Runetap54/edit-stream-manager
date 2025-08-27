@@ -141,11 +141,14 @@ export function PhotoGrid({
     }
   }, { enableOnFormTags: false }, [hoveredKey, selectedEnd, onPhotoSelect, photos]);
 
-  // Dynamic shot type hotkeys
-  shotTypes.forEach(shotType => {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useHotkeys(shotType.hotkey, () => onShotTypeSelect(shotType.id), { enableOnFormTags: false }, [onShotTypeSelect, shotType.id, shotType.hotkey]);
-  });
+  // Single hotkey handler for all shot types
+  useHotkeys('*', (event) => {
+    const key = event.key.toLowerCase();
+    const shotType = shotTypes.find(st => st.hotkey === key);
+    if (shotType) {
+      onShotTypeSelect(shotType.id);
+    }
+  }, { enableOnFormTags: false }, [shotTypes, onShotTypeSelect]);
 
   const handleImageClick = (photo: Photo, e: React.MouseEvent) => {
     if (e.shiftKey) {
