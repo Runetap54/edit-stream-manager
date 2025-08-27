@@ -213,10 +213,13 @@ export type Database = {
         Row: {
           created_at: string | null
           deleted_at: string | null
+          end_frame_signed_url: string | null
           end_key: string
           folder: string
           id: string
           shot_type: number
+          signed_url_expires_at: string | null
+          start_frame_signed_url: string | null
           start_key: string
           status: string | null
           updated_at: string | null
@@ -225,10 +228,13 @@ export type Database = {
         Insert: {
           created_at?: string | null
           deleted_at?: string | null
+          end_frame_signed_url?: string | null
           end_key: string
           folder: string
           id?: string
           shot_type: number
+          signed_url_expires_at?: string | null
+          start_frame_signed_url?: string | null
           start_key: string
           status?: string | null
           updated_at?: string | null
@@ -237,10 +243,13 @@ export type Database = {
         Update: {
           created_at?: string | null
           deleted_at?: string | null
+          end_frame_signed_url?: string | null
           end_key?: string
           folder?: string
           id?: string
           shot_type?: number
+          signed_url_expires_at?: string | null
+          start_frame_signed_url?: string | null
           start_key?: string
           status?: string | null
           updated_at?: string | null
@@ -261,6 +270,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      are_signed_urls_expired: {
+        Args: { expires_at: string }
+        Returns: boolean
+      }
       is_admin: {
         Args: { user_id: string }
         Returns: boolean
