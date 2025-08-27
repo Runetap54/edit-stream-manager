@@ -8,6 +8,7 @@ import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { ProjectDropdown } from "@/components/dashboard/ProjectDropdown";
+import { LumaTestPanel } from "@/components/dashboard/LumaTestPanel";
 import { Loader2 } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
 
@@ -285,8 +286,8 @@ export default function Dashboard() {
           />
         </div>
         
-        {/* Main Content Grid - Equal columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Main Content Grid - Three columns */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Photo Grid with integrated upload - Takes up 1 column */}
           <div className="space-y-4">
             <PhotoGrid
@@ -311,6 +312,11 @@ export default function Dashboard() {
               scenes={scenes}
               onSceneUpdate={setScenes}
             />
+          </div>
+
+          {/* Luma Test Panel - Takes up 1 column */}
+          <div className="space-y-4">
+            <LumaTestPanel />
           </div>
         </div>
       </div>
