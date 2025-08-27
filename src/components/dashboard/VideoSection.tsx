@@ -48,7 +48,7 @@ interface VideoSectionProps {
   folder: string;
   selectedStart: string;
   selectedEnd: string;
-  selectedShotType: number;
+  selectedShotTypeId: string | null;
   scenes: Array<{
     sceneId: string;
     generationId: string;
@@ -66,7 +66,7 @@ export function VideoSection({
   folder,
   selectedStart,
   selectedEnd,
-  selectedShotType,
+  selectedShotTypeId,
   scenes,
   onSceneUpdate,
 }: VideoSectionProps) {
