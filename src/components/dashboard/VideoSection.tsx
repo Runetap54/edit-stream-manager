@@ -64,7 +64,6 @@ export function VideoSection({
   onSceneUpdate,
 }: VideoSectionProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [storageScenes, setStorageScenes] = useState<StorageScene[]>([]);
   const [dbScenes, setDbScenes] = useState<Scene[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(
@@ -73,12 +72,11 @@ export function VideoSection({
 
   useEffect(() => {
     if (folder) {
-      loadStorageScenes();
       loadDbScenes();
       
-      // Set up real-time subscription for scene updates
+      // Set up real-time subscription for scene and scene_versions updates
       const channel = supabase
-        .channel('scene-changes')
+        .channel('scene-realtime')
         .on(
           'postgres_changes',
           {
@@ -94,7 +92,7 @@ export function VideoSection({
         .on(
           'postgres_changes',
           {
-            event: 'INSERT',
+            event: '*',
             schema: 'public',
             table: 'scene_versions'
           },
@@ -110,47 +108,10 @@ export function VideoSection({
     }
   }, [folder]);
 
-  const loadStorageScenes = async () => {
-    if (!folder) return;
-    
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Authentication required");
-        return;
-      }
-
-      const response = await supabase.functions.invoke('scenes-from-storage', {
-        method: 'GET',
-        body: null,
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.error) {
-        console.error("Error loading scenes from storage:", response.error);
-        toast.error(`Failed to load scenes: ${response.error.message}`);
-        return;
-      }
-
-      const { data } = response.data || {};
-      if (data?.scenes) {
-        setStorageScenes(data.scenes);
-      }
-    } catch (error) {
-      console.error("Error loading storage scenes:", error);
-      toast.error("Failed to load scenes from storage");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadDbScenes = async () => {
     if (!folder) return;
     
+    setLoading(true);
     try {
       const { data: scenesData, error } = await supabase
         .from("scenes")
@@ -158,17 +119,21 @@ export function VideoSection({
           *,
           scene_versions (*)
         `)
+        .eq("folder", folder)
         .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (error) {
         console.error("Error loading DB scenes:", error);
+        toast.error("Failed to load scenes");
         return;
       }
 
       const scenesWithVersions = scenesData?.map(scene => ({
         ...scene,
-        versions: scene.scene_versions || []
+        versions: (scene.scene_versions || []).sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
       })) || [];
 
       // Refresh expired signed URLs in background
@@ -179,8 +144,22 @@ export function VideoSection({
       });
 
       setDbScenes(scenesWithVersions);
+      
+      // Auto-select the first scene if none selected and scenes exist
+      if (scenesWithVersions.length > 0 && !selectedSceneId) {
+        const firstSceneId = scenesWithVersions[0].id;
+        setSelectedSceneId(firstSceneId);
+        setSearchParams(prev => {
+          const newParams = new URLSearchParams(prev);
+          newParams.set('sceneId', firstSceneId);
+          return newParams;
+        });
+      }
     } catch (error) {
       console.error("Error loading DB scenes:", error);
+      toast.error("Failed to load scenes");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -201,9 +180,7 @@ export function VideoSection({
 
   const getLatestVersion = (scene: Scene) => {
     if (scene.versions.length === 0) return null;
-    return scene.versions.reduce((latest, current) => 
-      current.version > latest.version ? current : latest
-    );
+    return scene.versions[0]; // Already sorted by created_at desc
   };
 
   const handleSceneSelect = (sceneId: string) => {
@@ -217,11 +194,38 @@ export function VideoSection({
 
   const handleRegenerateScene = async (sceneId: string) => {
     try {
-      // TODO: Call API to regenerate scene
+      // Call the create-scene edge function for regeneration
+      const scene = dbScenes.find(s => s.id === sceneId);
+      if (!scene) {
+        toast.error("Scene not found");
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Please sign in to regenerate scenes");
+      }
+
+      const requestBody = {
+        generationId: crypto.randomUUID(),
+        sceneId: scene.id,
+        startFrameUrl: scene.start_frame_signed_url || scene.start_key,
+        endFrameUrl: scene.end_frame_signed_url || scene.end_key,
+        shotType: scene.shot_type
+      };
+
+      const response = await supabase.functions.invoke("create-scene", {
+        body: requestBody
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
       toast.success("Scene regeneration started!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error regenerating scene:", error);
-      toast.error("Failed to regenerate scene");
+      toast.error(error.message || "Failed to regenerate scene");
     }
   };
 
@@ -283,37 +287,33 @@ export function VideoSection({
     }
   };
 
-  // Function to create unique scene identifier
-  const getSceneIdentifier = (startUrl: string, endUrl: string, shotType: number) => {
-    return `${startUrl}-${endUrl || 'none'}-${shotType}`;
-  };
-
-  // Combine scenes from different sources into a unified list
+  // Combined scenes from session and database, filtered by current folder
   const allScenes = [
-    ...scenes.map((scene, index) => ({
+    // Session scenes (temporary, processing)
+    ...scenes.filter(scene => 
+      // Only include session scenes that don't have a corresponding DB scene yet
+      !dbScenes.some(dbScene => dbScene.id === scene.sceneId)
+    ).map((scene, index) => ({
       id: scene.sceneId,
-      identifier: getSceneIdentifier(scene.startFrameUrl, scene.endFrameUrl || '', scene.shotType),
       startFrameUrl: scene.startFrameUrl,
       endFrameUrl: scene.endFrameUrl,
       shotType: scene.shotType,
       status: scene.status,
       videoUrl: scene.videoUrl,
-      sceneNumber: index + 1,
       type: 'session' as const,
       createdAt: scene.createdAt,
       versions: []
     })),
-    ...dbScenes.map((scene, index) => {
+    // Database scenes
+    ...dbScenes.map((scene) => {
       const latestVersion = getLatestVersion(scene);
       return {
         id: scene.id,
-        identifier: getSceneIdentifier(scene.start_key, scene.end_key, scene.shot_type),
         startFrameUrl: scene.start_frame_signed_url || scene.start_key,
         endFrameUrl: scene.end_frame_signed_url || scene.end_key,
         shotType: scene.shot_type,
         status: scene.status,
         videoUrl: latestVersion?.video_url,
-        sceneNumber: scenes.length + index + 1,
         type: 'database' as const,
         versions: scene.versions,
         createdAt: new Date(scene.created_at)

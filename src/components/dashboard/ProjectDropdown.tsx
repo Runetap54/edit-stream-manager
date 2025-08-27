@@ -7,16 +7,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, FolderOpen, Plus } from "lucide-react";
+import { ChevronDown, FolderOpen, Plus, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useApi } from "@/hooks/useApi";
-
-interface Project {
-  id: string;
-  name: string;
-  created_at: string;
-  updated_at: string;
-}
+import { toast } from "sonner";
 
 interface ProjectDropdownProps {
   selectedProject: string;
@@ -24,71 +17,117 @@ interface ProjectDropdownProps {
 }
 
 export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDropdownProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const { execute: fetchProjects, loading } = useApi();
+  const [folders, setFolders] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadProjects();
+    loadFolders();
+    setupRealtimeSubscription();
   }, []);
 
-  const loadProjects = async () => {
-    const result = await fetchProjects(async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('No session found');
+  const topLevelFolderFromPath = (path: string, rootPrefix = 'Photos/') => {
+    const rel = path.startsWith(rootPrefix) ? path.slice(rootPrefix.length) : path;
+    return rel.split('/')[0];
+  };
+
+  const loadFolders = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from('media')
+        .list('Photos', {
+          limit: 1000,
+          sortBy: { column: 'name', order: 'asc' }
+        });
+
+      if (error) {
+        console.error("Error loading folders from storage:", error);
+        toast.error("Failed to load folders");
+        return;
       }
 
-      console.log('Fetching projects from storage...');
-      const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/projects-from-storage`;
-      console.log(`Function URL: ${functionUrl}`);
+      // Extract unique folder names from storage objects
+      const folderSet = new Set<string>();
       
-      const response = await fetch(functionUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
+      // Add folders from directory listing
+      data?.forEach(item => {
+        if (item.name && !item.name.includes('.')) {
+          // This is likely a folder
+          folderSet.add(item.name);
+        }
       });
 
-      console.log(`Response status: ${response.status}`);
+      // Also get folders from file paths by listing all objects
+      const { data: allFiles, error: filesError } = await supabase.storage
+        .from('media')
+        .list('Photos', {
+          limit: 1000,
+          sortBy: { column: 'name', order: 'asc' }
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`HTTP Error: ${response.status} - ${errorText}`);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      if (!filesError && allFiles) {
+        allFiles.forEach(file => {
+          if (file.name && file.name.includes('/')) {
+            const folderName = topLevelFolderFromPath(`Photos/${file.name}`, 'Photos/');
+            if (folderName && folderName !== file.name) {
+              folderSet.add(folderName);
+            }
+          }
+        });
       }
 
-      const result = await response.json();
-      console.log('Projects API Response:', result);
-      
-      if (!result.ok) {
-        throw new Error(result.error?.message || 'Failed to fetch projects');
-      }
+      const uniqueFolders = Array.from(folderSet).filter(Boolean).sort();
+      setFolders(uniqueFolders);
 
-      const projects = result.data?.projects || [];
-      console.log(`Found ${projects.length} projects:`, projects);
-      return projects;
-    });
-
-    if (result?.data) {
-      // Convert project names to project objects for compatibility
-      const projectObjects = result.data.map((name: string) => ({
-        id: name, // Use name as ID for now
-        name,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
-      
-      setProjects(projectObjects);
-      
-      // Auto-select the most recent project if none selected
-      if (!selectedProject && projectObjects.length > 0) {
-        onProjectSelect(projectObjects[0].name);
+      // Auto-select first folder if none selected and folders exist
+      if (!selectedProject && uniqueFolders.length > 0) {
+        onProjectSelect(uniqueFolders[0]);
       }
+    } catch (error) {
+      console.error("Error loading folders:", error);
+      toast.error("Failed to load folders");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const displayText = selectedProject || "Select Project";
+  const setupRealtimeSubscription = () => {
+    const channel = supabase
+      .channel('media-objects')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'storage',
+          table: 'objects',
+          filter: 'bucket_id=eq.media'
+        },
+        (payload) => {
+          console.log('Storage change detected:', payload);
+          
+          // Debounce folder refresh to avoid too many updates
+          setTimeout(() => {
+            loadFolders();
+          }, 1000);
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to storage changes');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn('Realtime subscription failed, falling back to polling');
+          // Fallback: poll every 15 seconds
+          const interval = setInterval(loadFolders, 15000);
+          return () => clearInterval(interval);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  const displayText = selectedProject || "Select Folder";
   const truncatedText = displayText.length > 20 
     ? displayText.substring(0, 17) + "..." 
     : displayText;
@@ -98,35 +137,41 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
       <DropdownMenuTrigger asChild>
         <Button 
           variant="outline" 
-          className="w-48 justify-between"
+          className="w-48 justify-between bg-background hover:bg-accent hover:text-accent-foreground border border-border"
           disabled={loading}
         >
           <div className="flex items-center space-x-2">
             <FolderOpen className="w-4 h-4" />
             <span className="truncate">{truncatedText}</span>
           </div>
-          <ChevronDown className="w-4 h-4 opacity-50" />
+          {loading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <ChevronDown className="w-4 h-4 opacity-50" />
+          )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-48">
-        {projects.length === 0 ? (
+      <DropdownMenuContent className="w-48 bg-popover border border-border shadow-md z-50">
+        {folders.length === 0 ? (
           <DropdownMenuItem disabled>
             <div className="text-center w-full text-muted-foreground">
-              No projects yet
+              {loading ? "Loading..." : "No folders found"}
             </div>
           </DropdownMenuItem>
         ) : (
           <>
-            {projects.map((project) => (
+            {folders.map((folder) => (
               <DropdownMenuItem
-                key={project.id}
-                onClick={() => onProjectSelect(project.name)}
-                className={selectedProject === project.name ? "bg-accent" : ""}
+                key={folder}
+                onClick={() => onProjectSelect(folder)}
+                className={`cursor-pointer hover:bg-accent hover:text-accent-foreground ${
+                  selectedProject === folder ? "bg-accent text-accent-foreground" : ""
+                }`}
               >
                 <div className="flex-1">
-                  <div className="font-medium truncate">{project.name}</div>
+                  <div className="font-medium truncate">{folder}</div>
                   <div className="text-xs text-muted-foreground">
-                    Updated {new Date(project.updated_at).toLocaleDateString()}
+                    Photo folder
                   </div>
                 </div>
               </DropdownMenuItem>
@@ -134,7 +179,7 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled className="text-xs text-muted-foreground">
               <Plus className="w-3 h-3 mr-1" />
-              Upload to create new project
+              Upload to create new folder
             </DropdownMenuItem>
           </>
         )}
