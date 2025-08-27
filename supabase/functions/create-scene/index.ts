@@ -11,6 +11,17 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const webhookSecret = Deno.env.get("N8N_HMAC_SECRET")!;
 const renderWebhookUrl = Deno.env.get("N8N_RENDER_WEBHOOK_URL")!;
 
+// Debug environment variables
+console.log("Environment variables loaded:");
+console.log("- SUPABASE_URL:", supabaseUrl ? "✓ Present" : "✗ Missing");
+console.log("- SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "✓ Present" : "✗ Missing");
+console.log("- N8N_HMAC_SECRET:", webhookSecret ? "✓ Present" : "✗ Missing");
+console.log("- N8N_RENDER_WEBHOOK_URL:", renderWebhookUrl ? `✓ Present: ${renderWebhookUrl}` : "✗ Missing");
+
+if (!renderWebhookUrl) {
+  console.error("CRITICAL: N8N_RENDER_WEBHOOK_URL is empty or undefined!");
+}
+
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Generate correlation ID
