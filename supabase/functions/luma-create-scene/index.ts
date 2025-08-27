@@ -10,7 +10,7 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const lumaApiKey = Deno.env.get("LUMA_API_KEY")!;
-const lumaApiBase = Deno.env.get("LUMA_API_BASE") || "https://api.lumalabs.ai";
+const lumaApiBase = Deno.env.get("LUMA_API_BASE") || "https://api.lumalabs.ai/dream-machine/v1";
 const signedUrlTtl = parseInt(Deno.env.get("SIGNED_URL_TTL_SECONDS") || "3600");
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -89,14 +89,13 @@ function extractStoragePath(cdnUrl: string): string {
 
 async function callLumaAPI(payload: any, correlationId: string): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    console.log(`[${correlationId}] Calling Luma API with payload:`, JSON.stringify(payload, null, 2));
+    console.log(`[${correlationId}] Calling Luma Dream Machine v1 API with payload:`, JSON.stringify(payload, null, 2));
     
-    const response = await fetch(`${lumaApiBase}/v1/videos`, {
+    const response = await fetch(`${lumaApiBase}/generations`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lumaApiKey}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'PanhandleAI-Dashboard/1.0'
       },
       body: JSON.stringify(payload)
     });
@@ -259,7 +258,7 @@ serve(async (req) => {
       );
     }
 
-    // Get shot type
+    // Get shot type details
     const { data: shotType, error: shotTypeError } = await supabase
       .from('shot_types')
       .select('name, prompt_template')
@@ -291,17 +290,21 @@ serve(async (req) => {
       );
     }
 
-    // Generate signed URLs for media
-    const startStoragePath = extractStoragePath(body.start_key);
-    const startSignedUrl = await generateSignedUrl(startStoragePath);
-    
-    if (!startSignedUrl) {
+    // Get project info for ordinal calculation
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('name', body.folder)
+      .eq('owner_id', user.id)
+      .single();
+
+    if (projectError || !project) {
       await logError({
         route: '/luma-create-scene',
         method: 'POST',
-        status: 500,
-        code: 'SIGNED_URL_ERROR',
-        message: 'Failed to generate signed URL for start frame',
+        status: 404,
+        code: 'PROJECT_NOT_FOUND',
+        message: 'Project not found',
         correlationId,
         userId: user.id,
       });
@@ -309,8 +312,27 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: { 
-            code: 'SIGNED_URL_ERROR', 
-            message: 'Failed to generate signed URL for start frame',
+            code: 'PROJECT_NOT_FOUND', 
+            message: 'Project not found',
+            correlationId 
+          },
+          ok: false 
+        }),
+        { status: 404, headers: responseHeaders }
+      );
+    }
+
+    // Get next ordinal for this project
+    const { data: ordinalResult, error: ordinalError } = await supabase
+      .rpc('next_scene_ordinal', { p_project_id: project.id });
+
+    if (ordinalError) {
+      console.error('Failed to get next ordinal:', ordinalError);
+      return new Response(
+        JSON.stringify({ 
+          error: { 
+            code: 'DB_ERROR', 
+            message: 'Failed to get next ordinal',
             correlationId 
           },
           ok: false 
@@ -319,46 +341,48 @@ serve(async (req) => {
       );
     }
 
-    let endSignedUrl = null;
-    if (body.end_key) {
-      const endStoragePath = extractStoragePath(body.end_key);
-      endSignedUrl = await generateSignedUrl(endStoragePath);
-    }
+    const nextOrdinal = ordinalResult;
 
-    // Create scene record
-    const sceneId = uuidv4();
-    const { error: sceneInsertError } = await supabase
+    // Generate signed URLs for the images
+    const startFrameStoragePath = extractStoragePath(body.start_key);
+    const endFrameStoragePath = body.end_key ? extractStoragePath(body.end_key) : null;
+    
+    const startFrameSignedUrl = await generateSignedUrl(startFrameStoragePath);
+    const endFrameSignedUrl = endFrameStoragePath ? await generateSignedUrl(endFrameStoragePath) : null;
+
+    console.log('Generated signed URLs:', {
+      startFrameSignedUrl,
+      endFrameSignedUrl,
+      correlationId
+    });
+
+    // Insert scene record into database
+    const { data: scene, error: sceneError } = await supabase
       .from('scenes')
       .insert({
-        id: sceneId,
         user_id: user.id,
+        project_id: project.id,
         folder: body.folder,
-        start_key: body.start_key,
-        end_key: body.end_key,
-        start_frame_signed_url: startSignedUrl,
-        end_frame_signed_url: endSignedUrl,
-        signed_url_expires_at: new Date(Date.now() + signedUrlTtl * 1000).toISOString(),
-        shot_type: 1, // Default value for compatibility
-        status: 'queued',
-        luma_status: 'pending'
-      });
+        start_key: startFrameStoragePath,
+        end_key: endFrameStoragePath,
+        shot_type: body.shot_type_id,
+        ordinal: nextOrdinal,
+        version: 1,
+        start_frame_signed_url: startFrameSignedUrl,
+        end_frame_signed_url: endFrameSignedUrl,
+        signed_url_expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        luma_status: 'pending',
+        status: 'queued'
+      })
+      .select()
+      .single();
 
-    if (sceneInsertError) {
-      await logError({
-        route: '/luma-create-scene',
-        method: 'POST',
-        status: 500,
-        code: 'DB_INSERT_ERROR',
-        message: 'Failed to create scene record',
-        correlationId,
-        userId: user.id,
-        safeContext: { error: sceneInsertError.message }
-      });
-      
+    if (sceneError || !scene) {
+      console.error('Failed to create scene record:', sceneError);
       return new Response(
         JSON.stringify({ 
           error: { 
-            code: 'DB_INSERT_ERROR', 
+            code: 'DB_ERROR', 
             message: 'Failed to create scene record',
             correlationId 
           },
@@ -368,23 +392,15 @@ serve(async (req) => {
       );
     }
 
-    // Prepare Luma API payload
+    console.log('Created scene record:', scene.id);
+
+    // Prepare Luma Dream Machine v1 API payload
     const lumaPayload = {
       prompt: shotType.prompt_template,
-      keyframes: {
-        frame0: {
-          type: "image",
-          url: startSignedUrl
-        }
-      }
+      resolution: "1080p",
+      model: "ray-flash-2",
+      loop: false
     };
-
-    if (endSignedUrl) {
-      lumaPayload.keyframes.frame1 = {
-        type: "image", 
-        url: endSignedUrl
-      };
-    }
 
     // Call Luma API
     const lumaResult = await callLumaAPI(lumaPayload, correlationId);
@@ -395,10 +411,10 @@ serve(async (req) => {
         .from('scenes')
         .update({ 
           status: 'error',
-          luma_status: 'error',
+          luma_status: 'failed',
           luma_error: lumaResult.error
         })
-        .eq('id', sceneId);
+        .eq('id', scene.id);
 
       await logError({
         route: '/luma-create-scene',
@@ -428,24 +444,24 @@ serve(async (req) => {
       .from('scenes')
       .update({ 
         luma_job_id: lumaResult.data.id,
-        status: 'running',
-        luma_status: 'running'
+        status: 'processing',
+        luma_status: 'processing'
       })
-      .eq('id', sceneId);
+      .eq('id', scene.id);
 
     if (updateError) {
       console.error(`[${correlationId}] Failed to update scene with Luma job ID:`, updateError);
     }
 
-    console.log(`[${correlationId}] Scene created successfully: ${sceneId}, Luma job: ${lumaResult.data.id}`);
+    console.log(`[${correlationId}] Scene created successfully: ${scene.id}, Luma job: ${lumaResult.data.id}`);
 
     return new Response(
       JSON.stringify({ 
         success: true,
         data: {
-          sceneId,
+          sceneId: scene.id,
           lumaJobId: lumaResult.data.id,
-          status: 'running'
+          status: 'processing'
         },
         ok: true 
       }),

@@ -21,6 +21,8 @@ interface SceneCardProps {
     status: 'processing' | 'ready' | 'error';
     videoUrl?: string;
     createdAt: Date;
+    ordinal?: number;
+    version?: number;
   };
   sceneNumber: number;
   onRegenerate?: (sceneId: string) => void;
@@ -43,9 +45,9 @@ export function SceneCard({ scene, sceneNumber, onRegenerate, onRevertVersion }:
 
   return (
     <div className="relative aspect-square rounded-lg overflow-hidden bg-background border border-border transition-all hover:scale-[1.02] hover:shadow-lg group">
-      {/* Scene Number Badge - Minimalist */}
+      {/* Scene Number Badge with version - Minimalist */}
       <Badge className="absolute top-2 left-2 z-10 bg-primary text-primary-foreground text-xs font-medium border-0">
-        Scene {sceneNumber}
+        Scene {scene.ordinal || sceneNumber} v{scene.version || 1}
       </Badge>
       
       {/* Status Indicator - Small and Subtle */}

@@ -14,6 +14,39 @@ const photosRoot = Deno.env.get("STORAGE_PHOTOS_ROOT") || "Photos";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Auto-create Scenes folder for Photos projects
+async function ensureScenesFolder(userId: string, projectName: string) {
+  try {
+    const scenesPath = `users/${userId}/Scenes/${projectName}`;
+    
+    // Check if folder exists by trying to list it
+    const { data: existingFiles, error: listError } = await supabase
+      .storage
+      .from('media')
+      .list(scenesPath, { limit: 1 });
+
+    if (!existingFiles || existingFiles.length === 0) {
+      // Create .keep file to establish the folder
+      const keepContent = new Uint8Array(0); // empty file
+      const { error: uploadError } = await supabase
+        .storage
+        .from('media')
+        .upload(`${scenesPath}/.keep`, keepContent, {
+          contentType: 'text/plain',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Failed to create Scenes folder:', uploadError);
+      } else {
+        console.log('Created Scenes folder:', scenesPath);
+      }
+    }
+  } catch (error) {
+    console.error('Error ensuring Scenes folder:', error);
+  }
+}
+
 function generateCorrelationId(): string {
   return crypto.randomUUID();
 }
@@ -160,6 +193,11 @@ serve(async (req) => {
 
           if (upsertError) {
             console.warn(`Failed to sync projects to DB: ${upsertError.message}`);
+          }
+
+          // Auto-create Scenes folders for all Photos projects
+          for (const projectName of projectFolders) {
+            await ensureScenesFolder(user.id, projectName);
           }
         }
 

@@ -265,6 +265,8 @@ export type Database = {
           luma_error: string | null
           luma_job_id: string | null
           luma_status: string | null
+          ordinal: number | null
+          project_id: string | null
           shot_type: number
           signed_url_expires_at: string | null
           start_frame_signed_url: string | null
@@ -272,6 +274,7 @@ export type Database = {
           status: string | null
           updated_at: string | null
           user_id: string
+          version: number
         }
         Insert: {
           created_at?: string | null
@@ -283,6 +286,8 @@ export type Database = {
           luma_error?: string | null
           luma_job_id?: string | null
           luma_status?: string | null
+          ordinal?: number | null
+          project_id?: string | null
           shot_type: number
           signed_url_expires_at?: string | null
           start_frame_signed_url?: string | null
@@ -290,6 +295,7 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
           user_id: string
+          version?: number
         }
         Update: {
           created_at?: string | null
@@ -301,6 +307,8 @@ export type Database = {
           luma_error?: string | null
           luma_job_id?: string | null
           luma_status?: string | null
+          ordinal?: number | null
+          project_id?: string | null
           shot_type?: number
           signed_url_expires_at?: string | null
           start_frame_signed_url?: string | null
@@ -308,6 +316,7 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
           user_id?: string
+          version?: number
         }
         Relationships: [
           {
@@ -364,6 +373,10 @@ export type Database = {
       is_admin: {
         Args: { user_id: string }
         Returns: boolean
+      }
+      next_scene_ordinal: {
+        Args: { p_project_id: string }
+        Returns: number
       }
     }
     Enums: {

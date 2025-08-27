@@ -9,13 +9,30 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const lumaApiKey = Deno.env.get("LUMA_API_KEY")!;
-const lumaApiBase = Deno.env.get("LUMA_API_BASE") || "https://api.lumalabs.ai";
+const lumaApiBase = Deno.env.get("LUMA_API_BASE") || "https://api.lumalabs.ai/dream-machine/v1";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function uploadVideoToStorage(videoUrl: string, userId: string, folder: string, sceneId: string, version: number): Promise<{ success: boolean; videoKey?: string; error?: string }> {
   try {
     console.log(`Downloading video from: ${videoUrl}`);
+    
+    // Get scene to find ordinal
+    const { data: scene, error: sceneError } = await supabase
+      .from('scenes')
+      .select('ordinal')
+      .eq('id', sceneId)
+      .single();
+
+    if (sceneError || !scene) {
+      return {
+        success: false,
+        error: `Failed to get scene ordinal: ${sceneError?.message}`
+      };
+    }
+
+    const fileName = `scene-${scene.ordinal}-v${version}.mp4`;
+    const filePath = `users/${userId}/Scenes/${folder}/${fileName}`;
     
     // Download video from Luma
     const response = await fetch(videoUrl);
@@ -24,14 +41,13 @@ async function uploadVideoToStorage(videoUrl: string, userId: string, folder: st
     }
     
     const videoBlob = await response.blob();
-    const videoKey = `users/${userId}/Scenes/${folder}/scene-${sceneId}/v${version}.mp4`;
     
-    console.log(`Uploading video to storage path: ${videoKey}`);
+    console.log(`Uploading video to storage path: ${filePath}`);
     
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('media')
-      .upload(videoKey, videoBlob, {
+      .upload(filePath, videoBlob, {
         contentType: 'video/mp4',
         upsert: true
       });
@@ -40,8 +56,8 @@ async function uploadVideoToStorage(videoUrl: string, userId: string, folder: st
       throw uploadError;
     }
     
-    console.log(`Video uploaded successfully to: ${videoKey}`);
-    return { success: true, videoKey };
+    console.log(`Video uploaded successfully to: ${filePath}`);
+    return { success: true, videoKey: filePath };
     
   } catch (error) {
     console.error('Failed to upload video to storage:', error);
@@ -51,14 +67,13 @@ async function uploadVideoToStorage(videoUrl: string, userId: string, folder: st
 
 async function pollLumaStatus(jobId: string): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    console.log(`Polling Luma API for job: ${jobId}`);
+    console.log(`Polling Luma Dream Machine v1 status for job: ${jobId}`);
     
-    const response = await fetch(`${lumaApiBase}/v1/videos/${jobId}`, {
+    const response = await fetch(`${lumaApiBase}/generations/${jobId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${lumaApiKey}`,
-        'User-Agent': 'PanhandleAI-Dashboard/1.0'
-      }
+      },
     });
     
     const responseText = await response.text();
@@ -67,7 +82,7 @@ async function pollLumaStatus(jobId: string): Promise<{ success: boolean; data?:
     if (!response.ok) {
       return {
         success: false,
-        error: `Luma API returned ${response.status}: ${responseText}`
+        error: `Luma API error ${response.status}: ${responseText}`
       };
     }
     
@@ -75,10 +90,10 @@ async function pollLumaStatus(jobId: string): Promise<{ success: boolean; data?:
     return { success: true, data };
     
   } catch (error) {
-    console.error('Luma status poll failed:', error);
+    console.error('Error polling Luma status:', error);
     return {
       success: false,
-      error: `Luma status poll failed: ${error.message}`
+      error: `Failed to poll Luma status: ${error.message}`
     };
   }
 }
@@ -159,7 +174,7 @@ serve(async (req) => {
     }
 
     // If already terminal, return immediately
-    if (scene.luma_status === 'completed' || scene.luma_status === 'error') {
+    if (scene.luma_status === 'completed' || scene.luma_status === 'failed') {
       return new Response(
         JSON.stringify({ 
           success: true,
@@ -198,8 +213,9 @@ serve(async (req) => {
         .from('scenes')
         .update({ 
           status: 'error',
-          luma_status: 'error',
-          luma_error: lumaResult.error
+          luma_status: 'failed',
+          luma_error: lumaResult.error,
+          updated_at: new Date().toISOString()
         })
         .eq('id', sceneId);
 
@@ -209,7 +225,7 @@ serve(async (req) => {
           data: {
             sceneId: scene.id,
             status: 'error',
-            lumaStatus: 'error',
+            lumaStatus: 'failed',
             lumaError: lumaResult.error,
             isTerminal: true
           },
@@ -220,108 +236,227 @@ serve(async (req) => {
     }
 
     const lumaData = lumaResult.data;
-    let updateData: any = {};
+    const userId = user.id;
 
     // Handle different Luma statuses
-    switch (lumaData.state) {
-      case 'queued':
-      case 'running':
-        updateData = {
-          luma_status: lumaData.state,
-          status: 'running'
-        };
-        break;
-        
-      case 'failed':
-        updateData = {
-          luma_status: 'error',
-          status: 'error',
-          luma_error: lumaData.failure_reason || 'Luma generation failed'
-        };
-        break;
-        
-      case 'completed':
-        if (lumaData.video?.url) {
-          // Upload video to storage
-          const uploadResult = await uploadVideoToStorage(
-            lumaData.video.url,
-            user.id,
-            scene.folder,
-            scene.id,
-            1 // version
-          );
-
-          if (uploadResult.success) {
-            // Insert scene version
-            const { error: versionError } = await supabase
-              .from('scene_versions')
-              .insert({
-                scene_id: scene.id,
-                version: 1,
-                video_key: uploadResult.videoKey,
-                render_meta: {
-                  luma_job_id: scene.luma_job_id,
-                  luma_response: lumaData,
-                  created_at: new Date().toISOString()
-                }
-              });
-
-            if (versionError) {
-              console.error('Failed to insert scene version:', versionError);
-            }
-
-            updateData = {
-              luma_status: 'completed',
-              status: 'ready'
-            };
-          } else {
-            updateData = {
-              luma_status: 'error',
-              status: 'error',
-              luma_error: `Failed to upload video: ${uploadResult.error}`
-            };
-          }
-        } else {
-          updateData = {
-            luma_status: 'error',
+    if (lumaData.status === 'completed') {
+      console.log('Scene completed, downloading video...');
+      
+      // Download and upload video
+      const videoUrl = lumaData.assets?.video;
+      if (!videoUrl) {
+        // Update scene with error
+        const { error: updateError } = await supabase
+          .from('scenes')
+          .update({
+            luma_status: 'failed',
             status: 'error',
-            luma_error: 'Luma completed but no video URL provided'
-          };
-        }
-        break;
-        
-      default:
-        console.warn(`Unknown Luma state: ${lumaData.state}`);
-        updateData = {
-          luma_status: lumaData.state || 'unknown'
-        };
+            luma_error: 'No video URL in completed Luma response',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sceneId)
+          .eq('user_id', userId);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            data: {
+              sceneId: scene.id,
+              status: 'error',
+              lumaStatus: 'failed',
+              lumaError: 'No video URL in completed response',
+              isTerminal: true
+            },
+            ok: true 
+          }),
+          { headers: responseHeaders }
+        );
+      }
+
+      const uploadResult = await uploadVideoToStorage(
+        videoUrl,
+        userId,
+        scene.folder,
+        sceneId,
+        scene.version || 1
+      );
+
+      if (!uploadResult.success) {
+        // Update scene with error
+        const { error: updateError } = await supabase
+          .from('scenes')
+          .update({
+            luma_status: 'failed',
+            status: 'error',
+            luma_error: uploadResult.error || 'Failed to upload video',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sceneId)
+          .eq('user_id', userId);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            data: {
+              sceneId: scene.id,
+              status: 'error',
+              lumaStatus: 'failed',
+              lumaError: uploadResult.error,
+              isTerminal: true
+            },
+            ok: true 
+          }),
+          { headers: responseHeaders }
+        );
+      }
+
+      console.log('Video uploaded successfully:', uploadResult.videoKey);
+
+      // Create scene version record
+      const { error: versionError } = await supabase
+        .from('scene_versions')
+        .insert({
+          scene_id: sceneId,
+          version: scene.version || 1,
+          video_url: uploadResult.videoKey,
+          render_meta: {
+            luma_job_id: scene.luma_job_id,
+            video_url: videoUrl,
+            uploaded_at: new Date().toISOString()
+          }
+        });
+
+      if (versionError) {
+        console.error('Failed to create scene version:', versionError);
+      }
+
+      // Update scene status
+      const { error: updateError } = await supabase
+        .from('scenes')
+        .update({
+          luma_status: 'completed',
+          status: 'ready',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sceneId)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('Failed to update scene status:', updateError);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          data: {
+            sceneId: scene.id,
+            status: 'ready',
+            lumaStatus: 'completed',
+            videoUrl: uploadResult.videoKey,
+            isTerminal: true
+          },
+          ok: true 
+        }),
+        { headers: responseHeaders }
+      );
+    } else if (lumaData.status === 'failed') {
+      console.log('Scene failed:', lumaData.error);
+      
+      // Update scene with error status
+      const { error: updateError } = await supabase
+        .from('scenes')
+        .update({
+          luma_status: 'failed',
+          status: 'error',
+          luma_error: lumaData.error || 'Scene generation failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sceneId)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('Failed to update scene error status:', updateError);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          data: {
+            sceneId: scene.id,
+            status: 'error',
+            lumaStatus: 'failed',
+            lumaError: lumaData.error,
+            isTerminal: true
+          },
+          ok: true 
+        }),
+        { headers: responseHeaders }
+      );
+    } else if (lumaData.status === 'processing') {
+      console.log('Scene still processing...');
+      
+      // Update scene status
+      const { error: updateError } = await supabase
+        .from('scenes')
+        .update({
+          luma_status: 'processing',
+          status: 'processing',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sceneId)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('Failed to update scene processing status:', updateError);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          data: {
+            sceneId: scene.id,
+            status: 'processing',
+            lumaStatus: 'processing',
+            progress: lumaData.progress,
+            isTerminal: false
+          },
+          ok: true 
+        }),
+        { headers: responseHeaders }
+      );
+    } else {
+      console.log('Scene in queue or other state:', lumaData.status);
+      
+      // Update scene status
+      const { error: updateError } = await supabase
+        .from('scenes')
+        .update({
+          luma_status: lumaData.status,
+          status: 'processing',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sceneId)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('Failed to update scene queue status:', updateError);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          data: {
+            sceneId: scene.id,
+            status: 'processing',
+            lumaStatus: lumaData.status,
+            progress: lumaData.progress,
+            isTerminal: false
+          },
+          ok: true 
+        }),
+        { headers: responseHeaders }
+      );
     }
-
-    // Update scene
-    const { error: updateError } = await supabase
-      .from('scenes')
-      .update(updateData)
-      .eq('id', sceneId);
-
-    if (updateError) {
-      console.error('Failed to update scene:', updateError);
-    }
-
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        data: {
-          sceneId: scene.id,
-          status: updateData.status || scene.status,
-          lumaStatus: updateData.luma_status,
-          lumaError: updateData.luma_error,
-          progress: lumaData.progress || null,
-          isTerminal: ['completed', 'error'].includes(updateData.luma_status)
-        },
-        ok: true 
-      }),
-      { headers: responseHeaders }
-    );
 
   } catch (error) {
     console.error('Unexpected error:', error);
