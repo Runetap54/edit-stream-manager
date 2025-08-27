@@ -9,17 +9,31 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const webhookSecret = Deno.env.get("N8N_HMAC_SECRET")!;
-const renderWebhookUrl = Deno.env.get("N8N_RENDER_WEBHOOK_URL")!;
+const rawRenderWebhookUrl = Deno.env.get("N8N_RENDER_WEBHOOK_URL")!;
+
+// Clean and validate the webhook URL
+const renderWebhookUrl = rawRenderWebhookUrl?.trim();
 
 // Debug environment variables
 console.log("Environment variables loaded:");
 console.log("- SUPABASE_URL:", supabaseUrl ? "✓ Present" : "✗ Missing");
 console.log("- SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "✓ Present" : "✗ Missing");
 console.log("- N8N_HMAC_SECRET:", webhookSecret ? "✓ Present" : "✗ Missing");
-console.log("- N8N_RENDER_WEBHOOK_URL:", renderWebhookUrl ? `✓ Present: ${renderWebhookUrl}` : "✗ Missing");
+console.log("- N8N_RENDER_WEBHOOK_URL (raw):", `"${rawRenderWebhookUrl}"`);
+console.log("- N8N_RENDER_WEBHOOK_URL (cleaned):", `"${renderWebhookUrl}"`);
 
-if (!renderWebhookUrl) {
+// Validate the webhook URL
+if (!renderWebhookUrl || renderWebhookUrl === '') {
   console.error("CRITICAL: N8N_RENDER_WEBHOOK_URL is empty or undefined!");
+  throw new Error("N8N_RENDER_WEBHOOK_URL environment variable is required");
+}
+
+try {
+  new URL(renderWebhookUrl);
+  console.log("✓ Webhook URL is valid");
+} catch (error) {
+  console.error("CRITICAL: N8N_RENDER_WEBHOOK_URL is not a valid URL:", renderWebhookUrl);
+  throw new Error(`Invalid N8N_RENDER_WEBHOOK_URL: ${error.message}`);
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
