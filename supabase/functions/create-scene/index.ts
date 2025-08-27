@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
-import { createHmac } from "https://deno.land/std@0.190.0/crypto/hmac.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,10 +79,22 @@ function validateStorageKeys(userId: string, folder: string, keys: string[]): bo
 }
 
 // HMAC signature generation
-function generateSignature(payload: string): string {
-  const hmac = createHmac("sha256", webhookSecret);
-  hmac.update(payload);
-  return `sha256=${hmac.toString("hex")}`;
+async function generateSignature(payload: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(webhookSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  const hexString = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  
+  return `sha256=${hexString}`;
 }
 
 serve(async (req) => {
@@ -322,7 +333,7 @@ serve(async (req) => {
     };
 
     const payloadString = JSON.stringify(webhookPayload);
-    const signature = generateSignature(payloadString);
+    const signature = await generateSignature(payloadString);
 
     // Send to n8n render webhook with timeout
     try {
