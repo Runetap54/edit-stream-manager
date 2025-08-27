@@ -261,7 +261,7 @@ serve(async (req) => {
     // Get shot type details
     const { data: shotType, error: shotTypeError } = await supabase
       .from('shot_types')
-      .select('name, prompt_template')
+      .select('name, prompt_template, sort_order')
       .eq('id', body.shot_type_id)
       .eq('owner_id', user.id)
       .single();
@@ -365,7 +365,7 @@ serve(async (req) => {
         folder: body.folder,
         start_key: startFrameStoragePath,
         end_key: endFrameStoragePath,
-        shot_type: body.shot_type_id,
+        shot_type: shotType.sort_order,
         ordinal: nextOrdinal,
         version: 1,
         start_frame_signed_url: startFrameSignedUrl,
