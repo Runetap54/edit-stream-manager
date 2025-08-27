@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Images, Play, Loader2 } from "lucide-react";
+import { Images, Play, Loader2, Upload, FolderOpen, X, ChevronDown, ChevronUp } from "lucide-react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useApi } from "@/hooks/useApi";
 
@@ -22,6 +25,7 @@ interface PhotoGridProps {
   onPhotoSelect: (photoUrl: string, type: "start" | "end") => void;
   onShotTypeSelect: (shotType: number) => void;
   onSceneGenerate: (sceneData: { startFrameUrl: string; endFrameUrl?: string; shotType: number }) => void;
+  onUploadComplete: (folder: string, files: string[]) => void;
 }
 
 const shotTypes = [
@@ -41,11 +45,20 @@ export function PhotoGrid({
   onPhotoSelect,
   onShotTypeSelect,
   onSceneGenerate,
+  onUploadComplete,
 }: PhotoGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const { execute: fetchPhotos } = useApi();
+  
+  // Upload functionality states
+  const [folderName, setFolderName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [showUploadExpanded, setShowUploadExpanded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadPhotos = async () => {
@@ -168,14 +181,193 @@ export function PhotoGrid({
     onSceneGenerate(sceneData);
   };
 
+  // Upload functionality
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setSelectedFiles(files);
+      // Auto-generate folder name from first few files if not set
+      if (!folderName) {
+        const baseName = files[0].name.split('.')[0];
+        setFolderName(`folder-${baseName}`);
+      }
+    }
+  };
+
+  const handleFolderSelect = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!folderName.trim()) {
+      toast.error("Please enter a folder name");
+      return;
+    }
+
+    if (!selectedFiles || selectedFiles.length === 0) {
+      toast.error("Please select files to upload");
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      const uploadedFiles: string[] = [];
+      const totalFiles = selectedFiles.length;
+
+      for (let i = 0; i < totalFiles; i++) {
+        const file = selectedFiles[i];
+        const fileName = file.name;
+        const filePath = `Photos/${folderName}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("media")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          toast.error(`Failed to upload ${fileName}`);
+          continue;
+        }
+
+        uploadedFiles.push(fileName);
+        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
+      }
+
+      if (uploadedFiles.length > 0) {
+        onUploadComplete(folderName, uploadedFiles);
+        
+        // Reset form
+        setFolderName("");
+        setSelectedFiles(null);
+        setUploadProgress(0);
+        setShowUploadExpanded(false);
+        
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      } else {
+        toast.error("No files were uploaded successfully");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedFiles(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Render upload interface when no project or no photos
+  const renderUploadInterface = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Folder Name Input */}
+        <div className="space-y-2">
+          <Label htmlFor="folder-name">Folder Name</Label>
+          <Input
+            id="folder-name"
+            placeholder="Enter folder name"
+            value={folderName}
+            onChange={(e) => setFolderName(e.target.value)}
+            disabled={uploading}
+          />
+        </div>
+
+        {/* File Selection */}
+        <div className="space-y-2">
+          <Label>Select Files</Label>
+          <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              onClick={handleFolderSelect}
+              disabled={uploading}
+              className="flex-1"
+            >
+              <FolderOpen className="w-4 h-4 mr-2" />
+              Choose Files
+            </Button>
+            {selectedFiles && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                disabled={uploading}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,video/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+        </div>
+
+        {/* Upload Button */}
+        <div className="space-y-2">
+          <Label>&nbsp;</Label>
+          <Button
+            onClick={handleUpload}
+            disabled={uploading || !folderName.trim() || !selectedFiles}
+            className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
+          >
+            {uploading ? "Uploading..." : "Upload"}
+          </Button>
+        </div>
+      </div>
+
+      {/* File List and Progress */}
+      {selectedFiles && (
+        <div className="space-y-2">
+          <div className="text-sm text-muted-foreground">
+            {selectedFiles.length} file(s) selected
+          </div>
+          {uploading && (
+            <div className="space-y-2">
+              <Progress value={uploadProgress} className="h-2" />
+              <div className="text-sm text-muted-foreground text-center">
+                {uploadProgress}% complete
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   if (!projectName) {
     return (
-      <Card className="h-64">
-        <CardContent className="flex items-center justify-center h-full">
-          <div className="text-center space-y-2">
-            <Images className="w-12 h-12 mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground">Select a project to view photos</p>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center space-x-2">
+            <Upload className="w-5 h-5 text-primary" />
+            <CardTitle>Upload Photos</CardTitle>
           </div>
+        </CardHeader>
+        <CardContent>
+          {renderUploadInterface()}
         </CardContent>
       </Card>
     );
@@ -189,10 +381,40 @@ export function PhotoGrid({
             <Images className="w-5 h-5" />
             <span>Photo Grid</span>
           </CardTitle>
-          <div className="text-sm text-muted-foreground">
-            {photos.length} images
+          <div className="flex items-center space-x-2">
+            <div className="text-sm text-muted-foreground">
+              {photos.length} images
+            </div>
+            {photos.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowUploadExpanded(!showUploadExpanded)}
+                className="h-8 w-8 p-0"
+              >
+                <Upload className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </div>
+        
+        {/* Compact upload interface when photos exist */}
+        {photos.length > 0 && showUploadExpanded && (
+          <div className="mt-4 p-4 border rounded-lg bg-muted/30">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium">Upload More Photos</div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowUploadExpanded(false)}
+                className="h-6 w-6 p-0"
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+            {renderUploadInterface()}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Shot Type Selection */}
@@ -224,24 +446,27 @@ export function PhotoGrid({
             ))}
           </div>
         ) : photos.length === 0 ? (
-          <div className="text-center py-8">
-            <Images className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No photos found in storage path for project: {projectName}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="mt-2"
-              onClick={() => {
-                const uploadPanel = document.querySelector('[data-upload-panel]');
-                if (uploadPanel) {
-                  uploadPanel.scrollIntoView({ behavior: 'smooth' });
-                } else {
-                  toast.info("Please scroll up to the Upload Panel to add photos");
-                }
-              }}
-            >
-              Open Upload Panel
-            </Button>
+          <div className="space-y-4">
+            <div className="text-center py-8">
+              <Images className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
+              <p className="text-muted-foreground">No photos found for project: {projectName}</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="mt-2"
+                onClick={() => setShowUploadExpanded(!showUploadExpanded)}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Photos
+              </Button>
+            </div>
+            
+            {/* Upload interface when no photos */}
+            {showUploadExpanded && (
+              <div className="border-t pt-4">
+                {renderUploadInterface()}
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

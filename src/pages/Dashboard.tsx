@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { User } from "@supabase/supabase-js";
-import { UploadPanel } from "@/components/dashboard/UploadPanel";
+
 import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -281,13 +281,10 @@ export default function Dashboard() {
           />
         </div>
         
-        {/* Upload Panel */}
-        <UploadPanel onUploadComplete={handleUploadComplete} />
-        
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Photo Grid - Takes up 2 columns on large screens */}
-          <div className="lg:col-span-2 space-y-4">
+        {/* Main Content Grid - Equal columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Photo Grid with integrated upload - Takes up 1 column */}
+          <div className="space-y-4">
             <PhotoGrid
               projectName={currentProject}
               selectedStart={selectedStart}
@@ -296,10 +293,11 @@ export default function Dashboard() {
               onPhotoSelect={handlePhotoSelect}
               onShotTypeSelect={handleShotTypeSelect}
               onSceneGenerate={handleSceneGenerate}
+              onUploadComplete={handleUploadComplete}
             />
           </div>
           
-          {/* Video Section - Takes up 1 column on large screens */}
+          {/* Video Section - Takes up 1 column */}
           <div className="space-y-4">
             <VideoSection
               folder={currentProject}
