@@ -222,20 +222,40 @@ export default function Dashboard() {
         throw new Error("Please sign in to generate scenes");
       }
 
+      // Get shot type details for prompt
+      const { data: shotType } = await supabase
+        .from('shot_types')
+        .select('prompt_template')
+        .eq('id', sceneData.shotTypeId)
+        .single();
+
       const requestBody = {
-        folder: currentProject,
-        start_key: sceneData.startFrameUrl,
-        end_key: sceneData.endFrameUrl || null,
-        shot_type_id: sceneData.shotTypeId
+        prompt: shotType?.prompt_template || "Create a cinematic video sequence",
+        model: "ray-flash-2",
+        aspect_ratio: "16:9",
+        resolution: "1080p",
+        frame0Url: sceneData.startFrameUrl,
+        frame1Url: sceneData.endFrameUrl
       };
 
-      const response = await supabase.functions.invoke("luma-create-scene", {
+      const response = await supabase.functions.invoke("luma-create", {
         body: requestBody
       });
 
       if (response.error) {
         throw response.error;
       }
+
+      if (!response.data.ok) {
+        throw new Error(response.data.error?.message || "Failed to generate scene");
+      }
+
+      // Store the Luma generation ID for polling
+      setScenes(prev => prev.map(scene => 
+        scene.generationId === generationId 
+          ? { ...scene, lumaJobId: response.data.data.id }
+          : scene
+      ));
 
       toast.success("Scene generation started!", {
         description: `Scene ID: ${sceneId.slice(0, 8)}...`
