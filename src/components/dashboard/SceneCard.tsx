@@ -31,43 +31,29 @@ export function SceneCard({ scene, sceneNumber, onRegenerate, onRevertVersion }:
   const getStatusIcon = () => {
     switch (scene.status) {
       case 'processing':
-        return <Loader2 className="w-3 h-3 animate-spin" />;
+        return <Loader2 className="w-4 h-4 animate-spin" />;
       case 'ready':
-        return <Video className="w-3 h-3" />;
+        return <Video className="w-4 h-4" />;
       case 'error':
-        return <AlertCircle className="w-3 h-3" />;
+        return <AlertCircle className="w-4 h-4" />;
       default:
-        return <Video className="w-3 h-3" />;
-    }
-  };
-
-  const getStatusColor = () => {
-    switch (scene.status) {
-      case 'processing':
-        return 'bg-blue-500';
-      case 'ready':
-        return 'bg-green-500';
-      case 'error':
-        return 'bg-red-500';
-      default:
-        return 'bg-muted';
+        return <Video className="w-4 h-4" />;
     }
   };
 
   return (
-    <div className="relative aspect-square rounded-lg overflow-hidden bg-background border border-border transition-all hover:scale-105 hover:shadow-lg">
-      {/* Scene Number Badge */}
-      <Badge className="absolute top-2 left-2 z-10 bg-background/90 text-foreground border">
+    <div className="relative aspect-square rounded-lg overflow-hidden bg-background border border-border transition-all hover:scale-[1.02] hover:shadow-lg group">
+      {/* Scene Number Badge - Minimalist */}
+      <Badge className="absolute top-2 left-2 z-10 bg-primary text-primary-foreground text-xs font-medium border-0">
         Scene {sceneNumber}
       </Badge>
       
-      {/* Status Badge */}
-      <Badge className={`absolute top-2 right-2 z-10 text-white ${getStatusColor()}`}>
+      {/* Status Indicator - Small and Subtle */}
+      <div className="absolute top-2 right-2 z-10">
         {getStatusIcon()}
-        <span className="ml-1 text-xs">{scene.status}</span>
-      </Badge>
+      </div>
 
-      {/* Video Content */}
+      {/* Video Content - Maximized for space */}
       {scene.status === 'ready' && scene.videoUrl ? (
         <video
           src={scene.videoUrl}
@@ -82,33 +68,28 @@ export function SceneCard({ scene, sceneNumber, onRegenerate, onRevertVersion }:
           {scene.startFrameUrl && (
             <img 
               src={scene.startFrameUrl} 
-              alt="Scene preview"
-              className="w-full h-full object-cover opacity-50"
+              alt={`Scene ${sceneNumber} preview`}
+              className="w-full h-full object-cover opacity-60"
             />
           )}
           
-          {/* Processing Overlay */}
-          <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+          {/* Processing Overlay - Minimal */}
+          <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
             <div className="text-center">
               {getStatusIcon()}
-              <p className="text-xs text-muted-foreground mt-1">
-                {scene.status === 'processing' && 'Processing...'}
-                {scene.status === 'error' && 'Failed'}
-                {scene.status === 'ready' && !scene.videoUrl && 'Pending'}
-              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="absolute bottom-2 left-2 right-2 flex justify-between">
+      {/* Action Buttons - Only show on hover to save space */}
+      <div className="absolute bottom-2 left-2 right-2 flex justify-between opacity-0 group-hover:opacity-100 transition-opacity">
         <Button
           variant="secondary"
           size="sm"
           onClick={() => onRegenerate?.(scene.sceneId)}
           disabled={scene.status === 'processing'}
-          className="bg-background/90 backdrop-blur-sm text-xs px-2 py-1 h-auto"
+          className="bg-background/95 backdrop-blur-sm text-xs px-2 py-1 h-auto border border-border/50"
         >
           <RotateCcw className="w-3 h-3 mr-1" />
           Regenerate
@@ -118,18 +99,11 @@ export function SceneCard({ scene, sceneNumber, onRegenerate, onRevertVersion }:
           variant="secondary"
           size="sm"
           onClick={() => onRevertVersion?.(scene.sceneId)}
-          className="bg-background/90 backdrop-blur-sm text-xs px-2 py-1 h-auto"
+          className="bg-background/95 backdrop-blur-sm text-xs px-2 py-1 h-auto border border-border/50"
         >
           <History className="w-3 h-3 mr-1" />
           Previous
         </Button>
-      </div>
-
-      {/* Shot Type Label */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-        <div className="text-white text-xs truncate">
-          {shotTypeNames[scene.shotType]}
-        </div>
       </div>
     </div>
   );

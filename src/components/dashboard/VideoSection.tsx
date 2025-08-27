@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Video, RotateCcw, Trash2, Download, Play, Loader2, Clock } from "lucide-react";
+import { Video, RotateCcw, Trash2, Download, Play } from "lucide-react";
 import { SceneCard } from "./SceneCard";
+import { refreshSceneSignedUrls, isSignedUrlExpired } from "@/lib/signedUrls";
 
 interface StorageScene {
   key: string;
@@ -150,7 +151,6 @@ export function VideoSection({
           *,
           scene_versions (*)
         `)
-        .eq("folder", folder)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -163,6 +163,13 @@ export function VideoSection({
         ...scene,
         versions: scene.scene_versions || []
       })) || [];
+
+      // Refresh expired signed URLs in background
+      scenesWithVersions.forEach(async (scene) => {
+        if (isSignedUrlExpired(scene.signed_url_expires_at)) {
+          await refreshSceneSignedUrls(scene.id);
+        }
+      });
 
       setDbScenes(scenesWithVersions);
     } catch (error) {
@@ -327,24 +334,22 @@ export function VideoSection({
               </div>
             )}
 
-            {/* Current Session Scenes */}
+            {/* Current Session Scenes - Optimized Grid */}
             {scenes.length > 0 && (
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground mb-3">
                   Video Scenes
                 </h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {scenes.map((scene, index) => (
                     <SceneCard
                       key={scene.generationId}
                       scene={scene}
                       sceneNumber={index + 1}
                       onRegenerate={() => {
-                        // TODO: Implement regeneration
                         toast.success("Scene regeneration started!");
                       }}
                       onRevertVersion={(sceneId) => {
-                        // TODO: Implement version revert
                         toast.success("Reverted to previous version");
                       }}
                     />

@@ -256,15 +256,78 @@ serve(async (req) => {
       );
     }
 
-    // Create scene record with new URL-based data
+// Convert CDN URLs to storage paths
+    const extractStoragePath = (cdnUrl: string): string => {
+      try {
+        const url = new URL(cdnUrl);
+        const pathParts = url.pathname.split('/');
+        const objectIndex = pathParts.findIndex(part => part === 'object');
+        if (objectIndex === -1) return '';
+        return pathParts.slice(objectIndex + 2).join('/');
+      } catch {
+        return '';
+      }
+    };
+
+    const generateSignedUrl = async (storagePath: string): Promise<string | null> => {
+      try {
+        const { data, error } = await supabase.storage
+          .from('media')
+          .createSignedUrl(storagePath, 604800); // 1 week
+        return error ? null : data.signedUrl;
+      } catch {
+        return null;
+      }
+    };
+
+    const startStoragePath = extractStoragePath(startFrameUrl);
+    const endStoragePath = endFrameUrl ? extractStoragePath(endFrameUrl) : null;
+
+    // Generate 1-week signed URLs
+    const startSignedUrl = await generateSignedUrl(startStoragePath);
+    const endSignedUrl = endStoragePath ? await generateSignedUrl(endStoragePath) : null;
+
+    if (!startSignedUrl) {
+      await logError({
+        route: '/create-scene',
+        method: 'POST',
+        status: 400,
+        code: 'INVALID_URL',
+        message: 'Failed to generate signed URL for start frame',
+        correlationId,
+        userId: user.id,
+        safeContext: { startFrameUrl, startStoragePath }
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: { 
+            code: 'INVALID_URL', 
+            message: 'Invalid start frame URL',
+            correlationId 
+          },
+          ok: false 
+        }),
+        { status: 400, headers: responseHeaders }
+      );
+    }
+
+    // Calculate expiry date (1 week from now)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // Create scene record with storage paths and signed URLs
     const { data: scene, error: sceneError } = await supabase
       .from("scenes")
       .insert({
         id: sceneId,
         user_id: user.id,
-        folder: `cdn-scenes-${generationId}`,
-        start_key: startFrameUrl,
-        end_key: endFrameUrl,
+        folder: `scenes-${Date.now()}`,
+        start_key: startStoragePath,
+        end_key: endStoragePath,
+        start_frame_signed_url: startSignedUrl,
+        end_frame_signed_url: endSignedUrl,
+        signed_url_expires_at: expiresAt.toISOString(),
         shot_type: shotType,
         status: "queued"
       })
@@ -302,12 +365,12 @@ serve(async (req) => {
       );
     }
 
-    // Prepare webhook payload for n8n with new URL-based format
+    // Prepare webhook payload for n8n with signed URLs
     const webhookPayload = {
       sceneId: sceneId,
       generationId: generationId,
-      startFrameUrl: startFrameUrl,
-      endFrameUrl: endFrameUrl,
+      startFrameUrl: startSignedUrl,
+      endFrameUrl: endSignedUrl,
       shotType: shotType,
       userId: user.id,
       timestamp: new Date().toISOString(),
