@@ -263,7 +263,10 @@ serve(async (req) => {
         const pathParts = url.pathname.split('/');
         const objectIndex = pathParts.findIndex(part => part === 'object');
         if (objectIndex === -1) return '';
-        return pathParts.slice(objectIndex + 2).join('/');
+        const fullPath = pathParts.slice(objectIndex + 2).join('/');
+        // Remove bucket name prefix (e.g., 'media/') to get the actual storage path
+        const bucketPrefix = 'media/';
+        return fullPath.startsWith(bucketPrefix) ? fullPath.slice(bucketPrefix.length) : fullPath;
       } catch {
         return '';
       }
