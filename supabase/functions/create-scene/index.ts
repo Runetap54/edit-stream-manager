@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
-import { createHmac } from "https://deno.land/std@0.190.0/crypto/mod.ts";
+import { createHmac } from "https://deno.land/std@0.190.0/crypto/hmac.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,7 +75,7 @@ function validateSceneRequest(body: any): { isValid: boolean; errors: string[] }
 
 // Validate storage keys belong to user
 function validateStorageKeys(userId: string, folder: string, keys: string[]): boolean {
-  const expectedPrefix = `${userId}/projects/${folder}/photos/`;
+  const expectedPrefix = `Photos/${folder}/`;
   return keys.every(key => key.startsWith(expectedPrefix));
 }
 
