@@ -210,6 +210,11 @@ export default function Dashboard() {
     
     setScenes(prev => [newScene, ...prev]);
     
+    // Auto-select the new scene by updating URL
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('sceneId', sceneId);
+    window.history.replaceState({}, '', `${window.location.pathname}?${searchParams}`);
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
