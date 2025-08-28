@@ -559,8 +559,8 @@ export function PhotoGrid({
 
         {/* Photo Grid */}
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Array.from({ length: Math.min(photos.length || 8, 8) }).map((_, i) => (
+          <div className="grid grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
+            {Array.from({ length: 9 }).map((_, i) => (
               <div
                 key={i}
                 className="aspect-square bg-muted animate-pulse rounded-lg"
@@ -591,7 +591,7 @@ export function PhotoGrid({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2">
             {photos.map((photo) => {
               const isStart = selectedStart === photo.url;
               const isEnd = selectedEnd === photo.url;

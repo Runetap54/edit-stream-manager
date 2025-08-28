@@ -398,13 +398,13 @@ export function VideoSection({
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {Array.from({ length: 6 }).map((_, i) => (
+            <div className="grid grid-cols-6 gap-3 max-h-[320px] overflow-y-auto pr-2">
+              {Array.from({ length: 12 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-square w-full" />
               ))}
             </div>
           ) : allScenes.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-6 gap-3 max-h-[320px] overflow-y-auto pr-2">
               {allScenes.map((scene) => (
                 <div
                   key={scene.id}
