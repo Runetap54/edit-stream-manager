@@ -32,8 +32,6 @@ interface PhotoGridProps {
   renderShotTypesOnly?: boolean;
 }
 
-// Removed static shot types - now using dynamic shot types from database
-
 export function PhotoGrid({
   projectName,
   selectedStart,
@@ -116,7 +114,6 @@ export function PhotoGrid({
 
     loadPhotos();
   }, [projectName]);
-
 
   // Hotkey handlers
   useHotkeys('s', () => {
@@ -241,8 +238,10 @@ export function PhotoGrid({
   };
 
   const handleUpload = async () => {
-    if (!folderName.trim()) {
-      toast.error("Please enter a folder name");
+    const isAddingToProject = photos.length > 0 && projectName;
+    
+    if (!isAddingToProject && !folderName.trim()) {
+      toast.error("Please enter a project name");
       return;
     }
 
@@ -266,7 +265,9 @@ export function PhotoGrid({
       for (let i = 0; i < totalFiles; i++) {
         const file = selectedFiles[i];
         const fileName = file.name;
-        const filePath = `Photos/${folderName}/${fileName}`;
+        // Use current project name if photos exist, otherwise use the entered folder name
+        const targetFolder = (photos.length > 0 && projectName) ? projectName : folderName;
+        const filePath = `Photos/${targetFolder}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("media")
@@ -286,7 +287,15 @@ export function PhotoGrid({
       }
 
       if (uploadedFiles.length > 0) {
-        onUploadComplete(folderName, uploadedFiles);
+        // If we have photos in current project, add to existing project
+        // Otherwise, create/switch to the new project
+        if (photos.length > 0 && projectName) {
+          // Adding to existing project - don't change project name
+          toast.success(`Added ${uploadedFiles.length} photos to ${projectName}`);
+        } else {
+          // Creating new project or first upload
+          onUploadComplete(folderName, uploadedFiles);
+        }
         
         // Reset form
         setFolderName("");
@@ -297,6 +306,39 @@ export function PhotoGrid({
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
+        
+        // Refresh photos to show new uploads
+        const loadPhotos = async () => {
+          if (!projectName && !folderName) return;
+          
+          const currentProject = projectName || folderName;
+          
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.user) return;
+
+            const functionUrl = `https://fmizfozbyrohydcutkgg.functions.supabase.co/photos-from-storage?project=${encodeURIComponent(currentProject)}`;
+            
+            const response = await fetch(functionUrl, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (response.ok) {
+              const result = await response.json();
+              if (result.ok) {
+                setPhotos(result.data?.photos || []);
+              }
+            }
+          } catch (error) {
+            console.error("Error refreshing photos:", error);
+          }
+        };
+        
+        loadPhotos();
       } else {
         toast.error("No files were uploaded successfully");
       }
@@ -316,86 +358,92 @@ export function PhotoGrid({
   };
 
   // Render upload interface when no project or no photos
-  const renderUploadInterface = () => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Folder Name Input */}
-        <div className="space-y-2">
-          <Label htmlFor="folder-name">Folder Name</Label>
-          <Input
-            id="folder-name"
-            placeholder="Enter folder name"
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            disabled={uploading}
-          />
-        </div>
-
-        {/* File Selection */}
-        <div className="space-y-2">
-          <Label>Select Files</Label>
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              onClick={handleFolderSelect}
-              disabled={uploading}
-              className="flex-1"
-            >
-              <FolderOpen className="w-4 h-4 mr-2" />
-              Choose Files
-            </Button>
-            {selectedFiles && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearSelection}
-                disabled={uploading}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,video/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-        </div>
-
-        {/* Upload Button */}
-        <div className="space-y-2">
-          <Label>&nbsp;</Label>
-          <Button
-            onClick={handleUpload}
-            disabled={uploading || !folderName.trim() || !selectedFiles}
-            className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
-          >
-            {uploading ? "Uploading..." : "Upload"}
-          </Button>
-        </div>
-      </div>
-
-      {/* File List and Progress */}
-      {selectedFiles && (
-        <div className="space-y-2">
-          <div className="text-sm text-muted-foreground">
-            {selectedFiles.length} file(s) selected
-          </div>
-          {uploading && (
+  const renderUploadInterface = () => {
+    const isAddingToProject = photos.length > 0 && projectName;
+    
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Folder Name Input - only show if creating new project */}
+          {!isAddingToProject && (
             <div className="space-y-2">
-              <Progress value={uploadProgress} className="h-2" />
-              <div className="text-sm text-muted-foreground text-center">
-                {uploadProgress}% complete
-              </div>
+              <Label htmlFor="folder-name">Project Name</Label>
+              <Input
+                id="folder-name"
+                placeholder="Enter project name"
+                value={folderName}
+                onChange={(e) => setFolderName(e.target.value)}
+                disabled={uploading}
+              />
             </div>
           )}
+
+          {/* File Selection */}
+          <div className="space-y-2">
+            <Label>Select Files</Label>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                onClick={handleFolderSelect}
+                disabled={uploading}
+                className="flex-1"
+              >
+                <FolderOpen className="w-4 h-4 mr-2" />
+                Choose Files
+              </Button>
+              {selectedFiles && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  disabled={uploading}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,video/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </div>
+
+          {/* Upload Button */}
+          <div className="space-y-2">
+            <Label>&nbsp;</Label>
+            <Button
+              onClick={handleUpload}
+              disabled={uploading || (!isAddingToProject && !folderName.trim()) || !selectedFiles}
+              className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
+            >
+              {uploading ? "Uploading..." : isAddingToProject ? "Add Photos" : "Create Project"}
+            </Button>
+          </div>
         </div>
-      )}
-    </div>
-  );
+
+        {/* File List and Progress */}
+        {selectedFiles && (
+          <div className="space-y-2">
+            <div className="text-sm text-muted-foreground">
+              {selectedFiles.length} file(s) selected
+            </div>
+            {uploading && (
+              <div className="space-y-2">
+                <Progress value={uploadProgress} className="h-2" />
+                <div className="text-sm text-muted-foreground text-center">
+                  {uploadProgress}% complete
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (!projectName) {
     return (
@@ -403,7 +451,7 @@ export function PhotoGrid({
         <CardHeader>
           <div className="flex items-center space-x-2">
             <Upload className="w-5 h-5 text-primary" />
-            <CardTitle>Upload Photos</CardTitle>
+            <CardTitle>Create New Project</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
@@ -442,7 +490,7 @@ export function PhotoGrid({
         {photos.length > 0 && showUploadExpanded && (
           <div className="mt-4 p-4 border rounded-lg bg-muted/30">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-medium">Upload More Photos</div>
+              <div className="text-sm font-medium">Add More Photos</div>
               <Button
                 variant="ghost"
                 size="sm"

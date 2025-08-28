@@ -373,14 +373,27 @@ export function VideoSection({
               <Video className="w-5 h-5" />
               <span>Video Scenes</span>
             </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              className="hidden md:inline-flex"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export All
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Create new project - this will be handled by parent
+                  window.location.href = '/dashboard';
+                }}
+                className="text-sm"
+              >
+                New Project
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden md:inline-flex"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export All
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

@@ -201,9 +201,12 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-              <Plus className="w-3 h-3 mr-1" />
-              Upload to create new folder
+            <DropdownMenuItem 
+              onClick={() => window.location.href = '/dashboard'}
+              className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create New Project
             </DropdownMenuItem>
           </>
         )}
