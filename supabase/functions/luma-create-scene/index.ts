@@ -102,6 +102,51 @@ function cleanParams(model: string, params: Record<string, any> = {}) {
   return out;
 }
 
+// Map our internal codes/params to provider-specific payloads
+function toLumaPayload(input: {
+  prompt: string;
+  model_code?: string;
+  params?: Record<string, unknown>;
+  keyframes?: Record<string, { type: string; url: string }>;
+}) {
+  const { prompt, model_code = "ray-flash-2", params = {}, keyframes } = input;
+
+  // Map our code -> Luma's model
+  const model = model_code === "ray-flash-2" ? "ray-flash-2" : "ray-flash-2";
+
+  // Build output with required fields
+  const out: any = { prompt, model };
+
+  // aspect_ratio: only pass if valid
+  const ar = params["aspect_ratio"];
+  if (ar === "16:9" || ar === "9:16" || ar === "1:1") out.aspect_ratio = ar;
+
+  // loop: boolean only
+  const loop = params["loop"];
+  if (typeof loop === "boolean") out.loop = loop;
+
+  // keyframes (optional) — keep only valid image URLs
+  if (keyframes && typeof keyframes === "object") {
+    const cleaned: any = {};
+    for (const [k, v] of Object.entries(keyframes)) {
+      if (v && v.type === "image" && typeof v.url === "string") cleaned[k] = v;
+    }
+    if (Object.keys(cleaned).length) out.keyframes = cleaned;
+  }
+
+  return out;
+}
+
+async function headOk(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(url, { method: "HEAD" });
+    const ct = r.headers.get("content-type") ?? "";
+    return r.ok && ct.startsWith("image/");
+  } catch { 
+    return false; 
+  }
+}
+
 async function callLumaAPI(payload: any, correlationId: string): Promise<{ 
   success: boolean; 
   data?: any; 
@@ -506,30 +551,62 @@ serve(async (req) => {
       );
     }
 
-    // Prepare Luma Dream Machine v1 API payload with cleaned parameters
-    const modelParams = {
-      loop: false,
-      aspect_ratio: "16:9"
+    // Validate keyframe URLs are accessible (HEAD check)
+    if (!(await headOk(startFrameSignedUrl))) {
+      return new Response(
+        JSON.stringify({ 
+          error: { 
+            code: 'INVALID_KEYFRAME_URL', 
+            message: 'Start frame URL not reachable or not image/*',
+            correlationId 
+          },
+          ok: false 
+        }),
+        { status: 400, headers: responseHeaders }
+      );
+    }
+
+    if (endFrameSignedUrl && !(await headOk(endFrameSignedUrl))) {
+      return new Response(
+        JSON.stringify({ 
+          error: { 
+            code: 'INVALID_KEYFRAME_URL', 
+            message: 'End frame URL not reachable or not image/*',
+            correlationId 
+          },
+          ok: false 
+        }),
+        { status: 400, headers: responseHeaders }
+      );
+    }
+
+    // Prepare keyframes object
+    const keyframes: Record<string, { type: string; url: string }> = {
+      frame0: {
+        type: "image",
+        url: startFrameSignedUrl
+      }
     };
-    const cleanedParams = cleanParams("ray-flash-2", modelParams);
     
-    const lumaPayload = {
+    if (endFrameSignedUrl) {
+      keyframes.frame1 = {
+        type: "image", 
+        url: endFrameSignedUrl
+      };
+    }
+
+    // Use the provider mapping function
+    const lumaPayload = toLumaPayload({
       prompt: shotType.prompt_template,
-      model: "ray-flash-2",
-      keyframes: {
-        frame0: {
-          type: "image",
-          url: startFrameSignedUrl
-        },
-        ...(endFrameSignedUrl ? {
-          frame1: {
-            type: "image", 
-            url: endFrameSignedUrl
-          }
-        } : {})
+      model_code: "ray-flash-2",
+      params: {
+        aspect_ratio: "16:9",
+        loop: false
       },
-      ...cleanedParams
-    };
+      keyframes
+    });
+
+    console.log(`[${correlationId}] Final Luma payload:`, JSON.stringify(lumaPayload, null, 2));
 
     // Call Luma API
     const lumaResult = await callLumaAPI(lumaPayload, correlationId);
