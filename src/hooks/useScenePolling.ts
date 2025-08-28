@@ -9,7 +9,6 @@ interface SceneStatus {
   lumaError?: string;
   progress?: number;
   isTerminal: boolean;
-  videoUrl?: string;
 }
 
 export function useScenePolling(sceneId: string | null, enabled: boolean = true) {
@@ -28,7 +27,7 @@ export function useScenePolling(sceneId: string | null, enabled: boolean = true)
         throw new Error('Not authenticated');
       }
 
-      const response = await supabase.functions.invoke(`luma-status/${currentSceneId}`, {
+      const response = await supabase.functions.invoke(`luma-scene-status/${currentSceneId}`, {
         method: 'GET'
       });
 
@@ -40,16 +39,7 @@ export function useScenePolling(sceneId: string | null, enabled: boolean = true)
         throw new Error(response.data.error?.message || 'Failed to fetch scene status');
       }
 
-      const lumaData = response.data.data;
-      const statusData = {
-        sceneId: currentSceneId,
-        status: lumaData.state === 'completed' ? 'ready' : lumaData.state === 'failed' ? 'error' : 'processing',
-        lumaStatus: lumaData.state,
-        lumaError: lumaData.failure_reason,
-        progress: lumaData.progress,
-        isTerminal: lumaData.state === 'completed' || lumaData.state === 'failed',
-        videoUrl: lumaData.video?.url
-      };
+      const statusData = response.data.data;
       setStatus(statusData);
 
       // Show completion toast

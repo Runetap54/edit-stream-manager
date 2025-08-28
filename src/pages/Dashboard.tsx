@@ -8,7 +8,6 @@ import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { ProjectDropdown } from "@/components/dashboard/ProjectDropdown";
-import { LumaTestPanel } from "@/components/dashboard/LumaTestPanel";
 import { Loader2 } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
 
@@ -222,40 +221,20 @@ export default function Dashboard() {
         throw new Error("Please sign in to generate scenes");
       }
 
-      // Get shot type details for prompt
-      const { data: shotType } = await supabase
-        .from('shot_types')
-        .select('prompt_template')
-        .eq('id', sceneData.shotTypeId)
-        .single();
-
       const requestBody = {
-        prompt: shotType?.prompt_template || "Create a cinematic video sequence",
-        model: "ray-flash-2",
-        aspect_ratio: "16:9",
-        resolution: "1080p",
-        frame0Url: sceneData.startFrameUrl,
-        frame1Url: sceneData.endFrameUrl
+        folder: currentProject,
+        start_key: sceneData.startFrameUrl,
+        end_key: sceneData.endFrameUrl || null,
+        shot_type_id: sceneData.shotTypeId
       };
 
-      const response = await supabase.functions.invoke("luma-create", {
+      const response = await supabase.functions.invoke("luma-create-scene", {
         body: requestBody
       });
 
       if (response.error) {
         throw response.error;
       }
-
-      if (!response.data.ok) {
-        throw new Error(response.data.error?.message || "Failed to generate scene");
-      }
-
-      // Store the Luma generation ID for polling
-      setScenes(prev => prev.map(scene => 
-        scene.generationId === generationId 
-          ? { ...scene, lumaJobId: response.data.data.id }
-          : scene
-      ));
 
       toast.success("Scene generation started!", {
         description: `Scene ID: ${sceneId.slice(0, 8)}...`
@@ -306,8 +285,8 @@ export default function Dashboard() {
           />
         </div>
         
-        {/* Main Content Grid - Three columns */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Main Content Grid - Equal columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Photo Grid with integrated upload - Takes up 1 column */}
           <div className="space-y-4">
             <PhotoGrid
@@ -332,11 +311,6 @@ export default function Dashboard() {
               scenes={scenes}
               onSceneUpdate={setScenes}
             />
-          </div>
-
-          {/* Luma Test Panel - Takes up 1 column */}
-          <div className="space-y-4">
-            <LumaTestPanel />
           </div>
         </div>
       </div>
