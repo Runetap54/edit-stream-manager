@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 import { v4 as uuidv4 } from "https://esm.sh/uuid@9.0.0";
-import { createHash } from "https://deno.land/std@0.224.0/hash/mod.ts";
+import { crypto } from "https://deno.land/std@0.190.0/crypto/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -474,7 +474,12 @@ serve(async (req) => {
       shotTypeId: body.shot_type_id,
       prompt: shotType.prompt_template
     };
-    const idemKey = createHash("sha256").update(JSON.stringify(idemInputs)).toString("hex");
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(idemInputs));
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const idemKey = Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
 
     // Validate keyframes URLs are accessible
     if (!startFrameSignedUrl) {
