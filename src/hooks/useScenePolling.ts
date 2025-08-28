@@ -43,3 +43,4 @@ export function useScenePolling() {
 
   return { pollScene }
 }
+await pollScene(sceneId, (update) => { /* update UI */ })
