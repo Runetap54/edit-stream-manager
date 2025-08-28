@@ -1,0 +1,77 @@
+# Render Infrastructure as Code
+# Drop this file at the repo root as `render.yaml`.
+
+services:
+  - type: static
+    name: edit-stream-manager-web
+    env: static
+    branch: main
+    buildCommand: |
+      npm ci
+      npm run build
+    publishPath: dist
+    pullRequestPreviewsEnabled: true
+
+    # SPA & caching rules (tweak as you like)
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=0, must-revalidate
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
+    routes:
+      # Let Vite/React handle client-side routing
+      - type: rewrite
+        source: /.*
+        destination: /index.html
+
+    envVars:
+      # --- Required for Supabase client ---
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+
+      # If your front-end directly calls the Edge Function, you usually
+      # don't need the Luma key in the client (keep it server-side on Supabase).
+      # Keep this UNSET here to avoid exposing secrets in the browser.
+      # - key: VITE_LUMA_API_KEY
+      #   sync: false
+
+      # Optional UI defaults
+      - key: VITE_DEFAULT_MODEL
+        value: ray-flash-2
+      - key: VITE_DEFAULT_ASPECT
+        value: 16:9
+
+# -----------------------------------------------------------------------------
+# OPTIONAL: If you later add a tiny Node server (e.g., webhook relay),
+# uncomment the block below and add your server code with the specified scripts.
+#
+#  - type: web
+#    name: edit-stream-manager-api
+#    env: node
+#    plan: starter
+#    branch: main
+#    buildCommand: |
+#      npm ci
+#      npm run build:server
+#    startCommand: npm run start:server
+#    runtime: node
+#    region: oregon
+#    autoDeploy: true
+#    healthCheckPath: /healthz
+#    envVars:
+#      - key: NODE_ENV
+#        value: production
+#      - key: SUPABASE_URL
+#        sync: false
+#      - key: SUPABASE_SERVICE_ROLE
+#        sync: false
+#      # If you proxy Luma through this server (not recommended if Supabase Edge
+#      # already does it), set the key here (server-side only):
+#      # - key: LUMA_API_KEY
+#      #   sync: false
+# -----------------------------------------------------------------------------
