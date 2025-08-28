@@ -318,7 +318,7 @@ export default function Dashboard() {
         )}
         
         {/* Main Content Grid - Photo grid on left, video section takes remaining space */}
-        <div className="grid grid-cols-1 lg:grid-cols-[450px_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Photo Grid with integrated upload - Takes up 1 column */}
           <div className="space-y-4">
             <PhotoGrid
