@@ -352,7 +352,7 @@ export default function Dashboard() {
           </div>
           
           {/* Video Section - Takes up 1 column */}
-          <div className="space-y-4">
+          <div className="space-y-2">
             <VideoSection
               folder={currentProject}
               selectedStart={selectedStart}
