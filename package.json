@@ -44,7 +44,6 @@
     "@types/uuid": "^10.0.0",
     "@uppy/core": "^5.0.0",
     "@uppy/dashboard": "^5.0.0",
-    "@uppy/file-input": "^5.0.0",
     "@uppy/react": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
