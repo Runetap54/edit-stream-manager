@@ -601,15 +601,30 @@ serve(async (req) => {
     }
 
     // Prepare provider payload with proper model mapping
-    const providerBody = {
+    const providerBody: any = {
       prompt: shotType.prompt_template,
       model: "ray-flash-2", // Use ray-flash-2 for Luma
       aspect_ratio: "16:9",
-      loop: false,
       keyframes
     };
 
+    // ❗ Remove loop when both keyframes are present (Luma restriction)
+    const hasF0 = !!providerBody?.keyframes?.frame0?.url;
+    const hasF1 = !!providerBody?.keyframes?.frame1?.url;
+    
+    // Only add loop if we have single keyframe
+    if (hasF0 && !hasF1) {
+      providerBody.loop = false;
+    }
+
+    // Strip unknown params to avoid silent 500s
+    const allowedTop = ["prompt", "model", "aspect_ratio", "duration", "quality", "keyframes", "loop"];
+    for (const k of Object.keys(providerBody)) {
+      if (!allowedTop.includes(k)) delete providerBody[k];
+    }
+
     console.log(`[${correlationId}] 📤 LUMA REQUEST PAYLOAD:`, JSON.stringify(providerBody, null, 2));
+    console.log(`[${correlationId}] 🔍 Keyframes check: frame0=${hasF0}, frame1=${hasF1}, loop=${providerBody.loop || 'undefined'}`);
 
     // Call Luma API
     const lumaResult = await callLumaAPI(providerBody, correlationId);
