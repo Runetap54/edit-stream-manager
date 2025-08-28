@@ -33,6 +33,29 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
   const loadFolders = async () => {
     setLoading(true);
     try {
+      // Get current user to ensure security
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to access projects");
+        return;
+      }
+
+      // Get user's projects from database (secure)
+      const { data: projects, error: projectsError } = await supabase
+        .from('projects')
+        .select('name')
+        .eq('owner_id', user.id)
+        .order('name');
+
+      if (projectsError) {
+        console.error("Error loading projects:", projectsError);
+        toast.error("Failed to load projects");
+        return;
+      }
+
+      const projectNames = projects?.map(p => p.name) || [];
+      
+      // Also check storage for any additional folders
       const { data, error } = await supabase.storage
         .from('media')
         .list('Photos', {
@@ -42,38 +65,39 @@ export function ProjectDropdown({ selectedProject, onProjectSelect }: ProjectDro
 
       if (error) {
         console.error("Error loading folders from storage:", error);
-        toast.error("Failed to load folders");
-        return;
+        // Don't fail completely, just use project names
       }
 
       // Extract unique folder names from storage objects
-      const folderSet = new Set<string>();
+      const folderSet = new Set<string>(projectNames);
       
-      // Add folders from directory listing
-      data?.forEach(item => {
-        if (item.name && !item.name.includes('.')) {
-          // This is likely a folder
-          folderSet.add(item.name);
-        }
-      });
-
-      // Also get folders from file paths by listing all objects
-      const { data: allFiles, error: filesError } = await supabase.storage
-        .from('media')
-        .list('Photos', {
-          limit: 1000,
-          sortBy: { column: 'name', order: 'asc' }
-        });
-
-      if (!filesError && allFiles) {
-        allFiles.forEach(file => {
-          if (file.name && file.name.includes('/')) {
-            const folderName = topLevelFolderFromPath(`Photos/${file.name}`, 'Photos/');
-            if (folderName && folderName !== file.name) {
-              folderSet.add(folderName);
-            }
+      if (data) {
+        // Add folders from directory listing
+        data.forEach(item => {
+          if (item.name && !item.name.includes('.')) {
+            // This is likely a folder
+            folderSet.add(item.name);
           }
         });
+
+        // Also get folders from file paths by listing all objects
+        const { data: allFiles, error: filesError } = await supabase.storage
+          .from('media')
+          .list('Photos', {
+            limit: 1000,
+            sortBy: { column: 'name', order: 'asc' }
+          });
+
+        if (!filesError && allFiles) {
+          allFiles.forEach(file => {
+            if (file.name && file.name.includes('/')) {
+              const folderName = topLevelFolderFromPath(`Photos/${file.name}`, 'Photos/');
+              if (folderName && folderName !== file.name) {
+                folderSet.add(folderName);
+              }
+            }
+          });
+        }
       }
 
       const uniqueFolders = Array.from(folderSet).filter(Boolean).sort();

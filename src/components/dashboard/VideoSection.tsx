@@ -94,7 +94,7 @@ export function VideoSection({
               event: '*',
               schema: 'public',
               table: 'scenes',
-              filter: `user_id=eq.${user.id}`
+              filter: `user_id=eq.${user.id}&folder=eq.${folder}`
             },
             () => {
               loadDbScenes();
@@ -141,6 +141,7 @@ export function VideoSection({
           *
         `)
         .eq("user_id", user.id)
+        .eq("folder", folder)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
 

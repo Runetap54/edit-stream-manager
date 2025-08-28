@@ -197,29 +197,14 @@ export default function Dashboard() {
     const sceneId = crypto.randomUUID();
     const generationId = crypto.randomUUID();
     
-    // Create immediate scene card with processing state
-    const newScene = {
-      sceneId,
-      generationId,
-      startFrameUrl: sceneData.startFrameUrl,
-      endFrameUrl: sceneData.endFrameUrl,
-      shotType: 1, // Legacy field for compatibility
-      status: 'processing' as const,
-      createdAt: new Date()
-    };
-    
-    setScenes(prev => [newScene, ...prev]);
-    
-    // Auto-select the new scene by updating URL
-    const searchParams = new URLSearchParams(window.location.search);
-    searchParams.set('sceneId', sceneId);
-    window.history.replaceState({}, '', `${window.location.pathname}?${searchParams}`);
-    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error("Please sign in to generate scenes");
       }
+
+      // Show loading toast
+      toast.loading("Starting scene generation...", { id: sceneId });
 
       const requestBody = {
         folder: currentProject,
@@ -236,20 +221,31 @@ export default function Dashboard() {
         throw response.error;
       }
 
+      // Only create scene card AFTER successful API response
+      const newScene = {
+        sceneId,
+        generationId,
+        startFrameUrl: sceneData.startFrameUrl,
+        endFrameUrl: sceneData.endFrameUrl,
+        shotType: 1, // Legacy field for compatibility
+        status: 'processing' as const,
+        createdAt: new Date()
+      };
+      
+      setScenes(prev => [newScene, ...prev]);
+      
+      // Auto-select the new scene by updating URL
+      const searchParams = new URLSearchParams(window.location.search);
+      searchParams.set('sceneId', sceneId);
+      window.history.replaceState({}, '', `${window.location.pathname}?${searchParams}`);
+
       toast.success("Scene generation started!", {
+        id: sceneId,
         description: `Scene ID: ${sceneId.slice(0, 8)}...`
       });
     } catch (error: any) {
       console.error("Error generating scene:", error);
-      
-      // Update scene status to error
-      setScenes(prev => prev.map(scene => 
-        scene.generationId === generationId 
-          ? { ...scene, status: 'error' as const }
-          : scene
-      ));
-      
-      toast.error(error.message || "Failed to generate scene");
+      toast.error(error.message || "Failed to generate scene", { id: sceneId });
     }
   };
 
@@ -285,8 +281,8 @@ export default function Dashboard() {
           />
         </div>
         
-        {/* Main Content Grid - Equal columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Main Content Grid - Photo grid on left, video section takes remaining space */}
+        <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-6">
           {/* Photo Grid with integrated upload - Takes up 1 column */}
           <div className="space-y-4">
             <PhotoGrid
