@@ -397,7 +397,7 @@ serve(async (req) => {
     // Prepare Luma Dream Machine v1 API payload
     const lumaPayload = {
       prompt: shotType.prompt_template,
-      model: "ray-2-flash",
+      model: "ray-flash-2",
       keyframes: {
         frame0: {
           type: "image",

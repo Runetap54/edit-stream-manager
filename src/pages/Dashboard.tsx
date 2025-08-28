@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { User } from "@supabase/supabase-js";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
@@ -254,6 +255,21 @@ export default function Dashboard() {
     setSelectedShotTypeId(shotTypeId);
   };
 
+  // Add hotkey for Enter to generate scene when photos are selected
+  const canGenerateScene = selectedStart && selectedShotTypeId;
+  useHotkeys(['enter'], () => {
+    if (canGenerateScene) {
+      handleSceneGenerate({
+        startFrameUrl: selectedStart,
+        endFrameUrl: selectedEnd,
+        shotTypeId: selectedShotTypeId!
+      });
+    }
+  }, {
+    enabled: !!canGenerateScene,
+    preventDefault: true
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -285,35 +301,17 @@ export default function Dashboard() {
         {/* Shot Type Row - Full width above main content */}
         {currentProject && (
           <div className="bg-card border rounded-lg p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <PhotoGrid
-                  projectName=""
-                  selectedStart=""
-                  selectedEnd=""
-                  selectedShotTypeId={selectedShotTypeId}
-                  onPhotoSelect={() => {}}
-                  onShotTypeSelect={handleShotTypeSelect}
-                  onSceneGenerate={() => {}}
-                  onUploadComplete={() => {}}
-                  renderShotTypesOnly={true}
-                />
-              </div>
-              <div className="flex-shrink-0">
-                <Button
-                  onClick={() => handleSceneGenerate({
-                    startFrameUrl: selectedStart,
-                    endFrameUrl: selectedEnd,
-                    shotTypeId: selectedShotTypeId!
-                  })}
-                  disabled={!selectedStart || !selectedShotTypeId}
-                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                >
-                  <Play className="w-4 h-4 mr-2" />
-                  Generate Scene
-                </Button>
-              </div>
-            </div>
+            <PhotoGrid
+              projectName=""
+              selectedStart=""
+              selectedEnd=""
+              selectedShotTypeId={selectedShotTypeId}
+              onPhotoSelect={() => {}}
+              onShotTypeSelect={handleShotTypeSelect}
+              onSceneGenerate={() => {}}
+              onUploadComplete={() => {}}
+              renderShotTypesOnly={true}
+            />
           </div>
         )}
         
@@ -332,6 +330,25 @@ export default function Dashboard() {
               onUploadComplete={handleUploadComplete}
               hideShotTypes={true}
             />
+            
+            {/* Generate Scene Button underneath photo grid */}
+            {currentProject && (
+              <div className="flex justify-center">
+                <Button
+                  onClick={() => handleSceneGenerate({
+                    startFrameUrl: selectedStart,
+                    endFrameUrl: selectedEnd,
+                    shotTypeId: selectedShotTypeId!
+                  })}
+                  disabled={!selectedStart || !selectedShotTypeId}
+                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90 px-8 py-3"
+                  size="lg"
+                >
+                  <Play className="w-5 h-5 mr-2" />
+                  Generate Scene {canGenerateScene && "(Press Enter)"}
+                </Button>
+              </div>
+            )}
           </div>
           
           {/* Video Section - Takes up 1 column */}

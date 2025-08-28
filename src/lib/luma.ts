@@ -1,6 +1,6 @@
 type CreateReq = {
   prompt: string;
-  model: "ray-2-flash";
+  model: "ray-flash-2";
   keyframes: {
     frame0: {
       type: "image";
@@ -51,7 +51,7 @@ export async function lumaStatus(id: string): Promise<StatusRes> {
 }
 
 export const DEFAULTS = {
-  model: "ray-2-flash" as const,
+  model: "ray-flash-2" as const,
   loop: false as const,
   aspect_ratio: "16:9" as const,
 };
