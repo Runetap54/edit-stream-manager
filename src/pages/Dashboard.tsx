@@ -8,7 +8,8 @@ import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { ProjectDropdown } from "@/components/dashboard/ProjectDropdown";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Play } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
 
 interface Profile {
@@ -281,8 +282,43 @@ export default function Dashboard() {
           />
         </div>
         
+        {/* Shot Type Row - Full width above main content */}
+        {currentProject && (
+          <div className="bg-card border rounded-lg p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <PhotoGrid
+                  projectName=""
+                  selectedStart=""
+                  selectedEnd=""
+                  selectedShotTypeId={selectedShotTypeId}
+                  onPhotoSelect={() => {}}
+                  onShotTypeSelect={handleShotTypeSelect}
+                  onSceneGenerate={() => {}}
+                  onUploadComplete={() => {}}
+                  renderShotTypesOnly={true}
+                />
+              </div>
+              <div className="flex-shrink-0">
+                <Button
+                  onClick={() => handleSceneGenerate({
+                    startFrameUrl: selectedStart,
+                    endFrameUrl: selectedEnd,
+                    shotTypeId: selectedShotTypeId!
+                  })}
+                  disabled={!selectedStart || !selectedShotTypeId}
+                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Generate Scene
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Main Content Grid - Photo grid on left, video section takes remaining space */}
-        <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[450px_1fr] gap-6">
           {/* Photo Grid with integrated upload - Takes up 1 column */}
           <div className="space-y-4">
             <PhotoGrid
@@ -294,6 +330,7 @@ export default function Dashboard() {
               onShotTypeSelect={handleShotTypeSelect}
               onSceneGenerate={handleSceneGenerate}
               onUploadComplete={handleUploadComplete}
+              hideShotTypes={true}
             />
           </div>
           

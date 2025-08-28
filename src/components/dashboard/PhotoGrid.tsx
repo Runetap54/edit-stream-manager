@@ -28,6 +28,8 @@ interface PhotoGridProps {
   onShotTypeSelect: (shotTypeId: string) => void;
   onSceneGenerate: (sceneData: { startFrameUrl: string; endFrameUrl?: string; shotTypeId: string }) => void;
   onUploadComplete: (folder: string, files: string[]) => void;
+  hideShotTypes?: boolean;
+  renderShotTypesOnly?: boolean;
 }
 
 // Removed static shot types - now using dynamic shot types from database
@@ -41,6 +43,8 @@ export function PhotoGrid({
   onShotTypeSelect,
   onSceneGenerate,
   onUploadComplete,
+  hideShotTypes = false,
+  renderShotTypesOnly = false,
 }: PhotoGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -158,25 +162,64 @@ export function PhotoGrid({
     }
   };
 
-  const canGenerateScene = selectedStart && projectName;
-
   // Get filename from storage key for display
   const getFilename = (storageKey: string) => {
     return storageKey.split('/').pop() || storageKey;
   };
 
-  const handleGenerateScene = async () => {
-    if (!canGenerateScene || !selectedShotTypeId) return;
-
-    const sceneData = {
-      startFrameUrl: selectedStart,
-      endFrameUrl: selectedEnd || undefined,
-      shotTypeId: selectedShotTypeId
-    };
-
-    // Call parent handler to create immediate scene card
-    onSceneGenerate(sceneData);
-  };
+  // If only rendering shot types (for the header row)
+  if (renderShotTypesOnly) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">Shot Type</div>
+          <ShotTypesManager 
+            trigger={
+              <Button variant="ghost" size="sm" className="h-6 px-2">
+                <Settings className="w-3 h-3" />
+              </Button>
+            }
+          />
+        </div>
+        {shotTypesLoading ? (
+          <div className="flex space-x-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-8 w-20 bg-muted animate-pulse rounded" />
+            ))}
+          </div>
+        ) : shotTypes.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-muted-foreground mb-2">No shot types available</p>
+            <ShotTypesManager 
+              trigger={
+                <Button variant="outline" size="sm">
+                  Create Shot Types
+                </Button>
+              }
+            />
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {shotTypes.map((shotType) => (
+              <Button
+                key={shotType.id}
+                variant={selectedShotTypeId === shotType.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => onShotTypeSelect(shotType.id)}
+                className="text-xs"
+                title={shotType.prompt_template}
+              >
+                <Badge variant="secondary" className="text-xs mr-1">
+                  {shotType.hotkey}
+                </Badge>
+                {shotType.name}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Upload functionality
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -414,59 +457,61 @@ export function PhotoGrid({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Shot Type Selection */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium">Shot Type</div>
-            <ShotTypesManager 
-              trigger={
-                <Button variant="ghost" size="sm" className="h-6 px-2">
-                  <Settings className="w-3 h-3" />
-                </Button>
-              }
-            />
-          </div>
-          {shotTypesLoading ? (
-            <div className="flex space-x-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-8 w-20 bg-muted animate-pulse rounded" />
-              ))}
-            </div>
-          ) : shotTypes.length === 0 ? (
-            <div className="text-center py-4">
-              <p className="text-sm text-muted-foreground mb-2">No shot types available</p>
+        {/* Shot Type Selection - only show if not hidden */}
+        {!hideShotTypes && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">Shot Type</div>
               <ShotTypesManager 
                 trigger={
-                  <Button variant="outline" size="sm">
-                    Create Shot Types
+                  <Button variant="ghost" size="sm" className="h-6 px-2">
+                    <Settings className="w-3 h-3" />
                   </Button>
                 }
               />
             </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {shotTypes.map((shotType) => (
-                <Button
-                  key={shotType.id}
-                  variant={selectedShotTypeId === shotType.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => onShotTypeSelect(shotType.id)}
-                  className="text-xs"
-                  title={shotType.prompt_template}
-                >
-                  <Badge variant="secondary" className="text-xs mr-1">
-                    {shotType.hotkey}
-                  </Badge>
-                  {shotType.name}
-                </Button>
-              ))}
-            </div>
-          )}
-        </div>
+            {shotTypesLoading ? (
+              <div className="flex space-x-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-8 w-20 bg-muted animate-pulse rounded" />
+                ))}
+              </div>
+            ) : shotTypes.length === 0 ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground mb-2">No shot types available</p>
+                <ShotTypesManager 
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      Create Shot Types
+                    </Button>
+                  }
+                />
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {shotTypes.map((shotType) => (
+                  <Button
+                    key={shotType.id}
+                    variant={selectedShotTypeId === shotType.id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onShotTypeSelect(shotType.id)}
+                    className="text-xs"
+                    title={shotType.prompt_template}
+                  >
+                    <Badge variant="secondary" className="text-xs mr-1">
+                      {shotType.hotkey}
+                    </Badge>
+                    {shotType.name}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Photo Grid */}
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4">
             {Array.from({ length: Math.min(photos.length || 8, 8) }).map((_, i) => (
               <div
                 key={i}
@@ -498,7 +543,7 @@ export function PhotoGrid({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4">
             {photos.map((photo) => {
               const isStart = selectedStart === photo.url;
               const isEnd = selectedEnd === photo.url;
@@ -570,36 +615,6 @@ export function PhotoGrid({
             })}
           </div>
         )}
-
-        {/* Generate Scene Button */}
-        <div className="flex flex-col items-center pt-4 space-y-2">
-          <Button
-            onClick={handleGenerateScene}
-            disabled={!canGenerateScene || loading || !selectedShotTypeId}
-            className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                Generate Scene
-              </>
-            )}
-          </Button>
-          {selectedStart && !selectedEnd && (
-            <p className="text-xs text-muted-foreground">End optional</p>
-          )}
-          {selectedEnd && !selectedStart && (
-            <p className="text-xs text-orange-500">Set Start (S) first</p>
-          )}
-          {!selectedShotTypeId && shotTypes.length > 0 && (
-            <p className="text-xs text-orange-500">Select a shot type</p>
-          )}
-        </div>
 
         {/* Instructions */}
         <div className="text-xs text-muted-foreground text-center space-y-1">
