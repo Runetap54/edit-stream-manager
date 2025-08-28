@@ -411,7 +411,7 @@ export function VideoSection({
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="grid grid-cols-6 gap-3 max-h-[320px] overflow-y-auto pr-2">
+            <div className="grid grid-cols-4 gap-3 max-2-[360px] overflow-y-auto pr-2">
               {Array.from({ length: 12 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-square w-full" />
               ))}
@@ -441,12 +441,14 @@ export function VideoSection({
                   </div>
 
                   {/* Thumbnail */}
-                  {scene.startFrameUrl ? (
-                    <img 
-                      src={scene.startFrameUrl} 
-                      alt={`Scene ${scene.sceneNumber} preview`}
-                      className="w-full h-full object-cover"
-                    />
+                 // inside SceneCard
+                  <div className="rounded-md border bg-card p-2">
+                        <div className="relative w-full h-36 overflow-hidden rounded">
+                          {/* video/preview thumb */}
+                      </div>
+                        {/* ...badges/buttons... */}
+                    </div>
+
                   ) : (
                     <div className="w-full h-full bg-muted flex items-center justify-center">
                       <Video className="w-8 h-8 text-muted-foreground" />
