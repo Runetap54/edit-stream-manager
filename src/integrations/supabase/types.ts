@@ -183,8 +183,7 @@ export type Database = {
           generation_id: string
           progress_pct: number | null
           scene_id: string
-          shot_type: number
-          shot_type_id: string | null
+          shot_type_id: string
           start_frame_url: string
           status: string
           updated_at: string
@@ -198,8 +197,7 @@ export type Database = {
           generation_id?: string
           progress_pct?: number | null
           scene_id: string
-          shot_type: number
-          shot_type_id?: string | null
+          shot_type_id: string
           start_frame_url: string
           status?: string
           updated_at?: string
@@ -213,14 +211,21 @@ export type Database = {
           generation_id?: string
           progress_pct?: number | null
           scene_id?: string
-          shot_type?: number
-          shot_type_id?: string | null
+          shot_type_id?: string
           start_frame_url?: string
           status?: string
           updated_at?: string
           video_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "scene_generations_shot_type_id_fkey"
+            columns: ["shot_type_id"]
+            isOneToOne: false
+            referencedRelation: "shot_types"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scene_versions: {
         Row: {
