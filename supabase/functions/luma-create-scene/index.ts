@@ -91,7 +91,7 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{ succe
   try {
     console.log(`[${correlationId}] Calling Luma Dream Machine v1 API with payload:`, JSON.stringify(payload, null, 2));
     
-    const response = await fetch(`${lumaApiBase}/generations`, {
+    const response = await fetch(lumaApiBase, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lumaApiKey}`,
@@ -397,9 +397,21 @@ serve(async (req) => {
     // Prepare Luma Dream Machine v1 API payload
     const lumaPayload = {
       prompt: shotType.prompt_template,
-      resolution: "1080p",
-      model: "ray-flash-2",
-      loop: false
+      model: "ray-2-flash",
+      keyframes: {
+        frame0: {
+          type: "image",
+          url: startFrameSignedUrl
+        },
+        ...(endFrameSignedUrl ? {
+          frame1: {
+            type: "image", 
+            url: endFrameSignedUrl
+          }
+        } : {})
+      },
+      loop: false,
+      aspect_ratio: "16:9"
     };
 
     // Call Luma API
