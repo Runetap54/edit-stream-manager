@@ -95,14 +95,29 @@ function parseApiError(error: any): ApiError {
 function showErrorToast(error: ApiError) {
   const friendlyMessage = getFriendlyErrorMessage(error);
   
+  // Create detailed error info for copy action
+  let errorDetails = `Error Code: ${error.code}\nCorrelation ID: ${error.correlationId}\nMessage: ${error.message}`;
+  
+  // Add upstream details if available (like Luma API response)
+  if (error.upstream) {
+    errorDetails += `\n\nUpstream Service: ${error.upstream.endpoint}`;
+    errorDetails += `\nUpstream Status: ${error.upstream.status}`;
+    if (error.upstream.bodySnippet) {
+      errorDetails += `\nUpstream Response: ${error.upstream.bodySnippet}`;
+    }
+  }
+  
+  // Add detail if available
+  if (error.detail) {
+    errorDetails += `\nDetails: ${typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail, null, 2)}`;
+  }
+  
   toast.error(friendlyMessage, {
-    description: error.correlationId,
+    description: `ID: ${error.correlationId}${error.upstream ? ` • ${error.upstream.endpoint} ${error.upstream.status}` : ''}`,
     action: error.code !== 'NETWORK_ERROR' ? {
       label: 'Copy Details',
       onClick: () => {
-        navigator.clipboard.writeText(
-          `Error Code: ${error.code}\nCorrelation ID: ${error.correlationId}\nMessage: ${error.message}`
-        );
+        navigator.clipboard.writeText(errorDetails);
         toast.success('Error details copied to clipboard');
       },
     } : undefined,
@@ -128,6 +143,21 @@ function getFriendlyErrorMessage(error: ApiError): string {
       return 'External service is temporarily unavailable. Please try again later.';
     case 'NETWORK_ERROR':
       return 'Network connection error. Please check your internet connection.';
+    // Luma API specific errors
+    case 'LUMA_AUTH_ERROR':
+      return error.message || 'Luma API authentication failed. Please check your API key.';
+    case 'LUMA_QUOTA_EXCEEDED':
+      return error.message || 'Luma API quota exceeded. Please try again later.';
+    case 'LUMA_VALIDATION_ERROR':
+      return error.message || 'Invalid request parameters for video generation.';
+    case 'LUMA_SERVER_ERROR':
+      return error.message || 'Luma API server error. Please try again later.';
+    case 'LUMA_API_ERROR':
+      // Show specific detail if available
+      if (error.detail && typeof error.detail === 'object' && error.detail.detail) {
+        return `Luma API Error: ${error.detail.detail}`;
+      }
+      return error.message || 'Video generation service error. Please try again.';
     default:
       return error.message || 'Something went wrong. Please try again.';
   }

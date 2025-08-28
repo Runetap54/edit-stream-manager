@@ -87,7 +87,16 @@ function extractStoragePath(cdnUrl: string): string {
   return match ? match[1] : cdnUrl;
 }
 
-async function callLumaAPI(payload: any, correlationId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+async function callLumaAPI(payload: any, correlationId: string): Promise<{ 
+  success: boolean; 
+  data?: any; 
+  error?: string;
+  lumaError?: {
+    status: number;
+    body: string;
+    parsed?: any;
+  }
+}> {
   try {
     console.log(`[${correlationId}] Calling Luma Dream Machine v1 API with payload:`, JSON.stringify(payload, null, 2));
     
@@ -105,9 +114,21 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{ succe
     console.log(`[${correlationId}] Luma API response body: ${responseText}`);
     
     if (!response.ok) {
+      let parsedError;
+      try {
+        parsedError = JSON.parse(responseText);
+      } catch {
+        // Keep as string if not valid JSON
+      }
+      
       return {
         success: false,
-        error: `Luma API returned ${response.status}: ${responseText}`
+        error: `Luma API returned ${response.status}: ${responseText}`,
+        lumaError: {
+          status: response.status,
+          body: responseText,
+          parsed: parsedError
+        }
       };
     }
     
@@ -428,11 +449,33 @@ serve(async (req) => {
         })
         .eq('id', scene.id);
 
+      // Determine specific error code based on Luma API response
+      let errorCode = 'LUMA_API_ERROR';
+      let userMessage = 'Scene generation failed';
+      
+      if (lumaResult.lumaError) {
+        const { status, parsed } = lumaResult.lumaError;
+        
+        if (status === 403) {
+          errorCode = 'LUMA_AUTH_ERROR';
+          userMessage = 'Authentication failed with Luma API. Please check API key configuration.';
+        } else if (status === 429) {
+          errorCode = 'LUMA_QUOTA_EXCEEDED';
+          userMessage = 'Luma API quota exceeded. Please try again later.';
+        } else if (status === 400) {
+          errorCode = 'LUMA_VALIDATION_ERROR';
+          userMessage = parsed?.detail || parsed?.message || 'Invalid request to Luma API';
+        } else if (status >= 500) {
+          errorCode = 'LUMA_SERVER_ERROR';
+          userMessage = 'Luma API server error. Please try again later.';
+        }
+      }
+
       await logError({
         route: '/luma-create-scene',
         method: 'POST',
         status: 502,
-        code: 'LUMA_API_ERROR',
+        code: errorCode,
         message: lumaResult.error || 'Luma API call failed',
         correlationId,
         userId: user.id,
@@ -441,9 +484,15 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: { 
-            code: 'LUMA_API_ERROR', 
-            message: 'Scene generation failed',
-            correlationId 
+            code: errorCode, 
+            message: userMessage,
+            detail: lumaResult.lumaError?.parsed || lumaResult.error,
+            correlationId,
+            upstream: lumaResult.lumaError ? {
+              endpoint: 'Luma API',
+              status: lumaResult.lumaError.status,
+              bodySnippet: lumaResult.lumaError.body.substring(0, 200)
+            } : undefined
           },
           ok: false 
         }),
