@@ -155,7 +155,20 @@ export function VideoSection({
       const sceneIds = scenesData?.map(s => s.id) || [];
       const { data: generationsData, error: generationsError } = await supabase
         .from("scene_generations")
-        .select("*")
+        .select(`
+          generation_id,
+          scene_id,
+          start_frame_url,
+          end_frame_url,
+          shot_type_id,
+          status,
+          progress_pct,
+          video_url,
+          error_code,
+          error_message,
+          created_at,
+          updated_at
+        `)
         .in("scene_id", sceneIds)
         .order("created_at", { ascending: false });
 
