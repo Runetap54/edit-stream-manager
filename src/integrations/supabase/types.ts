@@ -184,6 +184,7 @@ export type Database = {
           progress_pct: number | null
           scene_id: string
           shot_type: number
+          shot_type_id: string | null
           start_frame_url: string
           status: string
           updated_at: string
@@ -198,6 +199,7 @@ export type Database = {
           progress_pct?: number | null
           scene_id: string
           shot_type: number
+          shot_type_id?: string | null
           start_frame_url: string
           status?: string
           updated_at?: string
@@ -212,6 +214,7 @@ export type Database = {
           progress_pct?: number | null
           scene_id?: string
           shot_type?: number
+          shot_type_id?: string | null
           start_frame_url?: string
           status?: string
           updated_at?: string
