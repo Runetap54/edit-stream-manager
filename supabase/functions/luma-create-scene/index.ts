@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 import { v4 as uuidv4 } from "https://esm.sh/uuid@9.0.0";
+import { createHash } from "https://deno.land/std@0.224.0/hash/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +88,20 @@ function extractStoragePath(cdnUrl: string): string {
   return match ? match[1] : cdnUrl;
 }
 
+function cleanParams(model: string, params: Record<string, any> = {}) {
+  // Allow only per-model fields; strip unsupported params that could cause 500s
+  const allowed: Record<string, string[]> = {
+    "ray-flash-2": ["aspect_ratio", "loop"],
+    // Add other models here as needed
+  };
+  const keep = allowed[model] ?? [];
+  const out: Record<string, any> = {};
+  for (const k of keep) {
+    if (params[k] !== undefined) out[k] = params[k];
+  }
+  return out;
+}
+
 async function callLumaAPI(payload: any, correlationId: string): Promise<{ 
   success: boolean; 
   data?: any; 
@@ -97,51 +112,86 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{
     parsed?: any;
   }
 }> {
-  try {
-    console.log(`[${correlationId}] Calling Luma Dream Machine v1 API with payload:`, JSON.stringify(payload, null, 2));
-    
-    const response = await fetch(lumaApiBase, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${lumaApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-    
-    const responseText = await response.text();
-    console.log(`[${correlationId}] Luma API response status: ${response.status}`);
-    console.log(`[${correlationId}] Luma API response body: ${responseText}`);
-    
-    if (!response.ok) {
-      let parsedError;
+  const maxAttempts = 3;
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[${correlationId}] Calling Luma Dream Machine v1 API (attempt ${attempt}/${maxAttempts}) with payload:`, JSON.stringify(payload, null, 2));
+      
+      const response = await fetch(lumaApiBase, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${lumaApiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const responseText = await response.text();
+      console.log(`[${correlationId}] Luma API response status: ${response.status}`);
+      console.log(`[${correlationId}] Luma API response body: ${responseText}`);
+      
+      let parsedResponse;
       try {
-        parsedError = JSON.parse(responseText);
+        parsedResponse = JSON.parse(responseText);
       } catch {
         // Keep as string if not valid JSON
+        parsedResponse = null;
       }
       
-      return {
-        success: false,
-        error: `Luma API returned ${response.status}: ${responseText}`,
-        lumaError: {
-          status: response.status,
-          body: responseText,
-          parsed: parsedError
-        }
+      if (response.ok) {
+        // 2xx from Luma → success
+        return { success: true, data: parsedResponse ?? responseText };
+      }
+      
+      // Luma error - distinguish between 4xx (client) and 5xx (server)
+      const lumaError = {
+        status: response.status,
+        body: responseText,
+        parsed: parsedResponse
       };
+      
+      if (response.status >= 500) {
+        // Server error - retry with exponential backoff
+        lastError = lumaError;
+        if (attempt < maxAttempts) {
+          const delay = 250 * Math.pow(2, attempt - 1); // 250ms, 500ms, 1000ms
+          console.log(`[${correlationId}] Luma server error ${response.status}, retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      } else {
+        // 4xx client error - don't retry
+        return {
+          success: false,
+          error: `Luma API returned ${response.status}: ${responseText}`,
+          lumaError
+        };
+      }
+      
+    } catch (networkError) {
+      console.error(`[${correlationId}] Luma API network error (attempt ${attempt}):`, networkError);
+      lastError = networkError;
+      
+      if (attempt < maxAttempts) {
+        const delay = 250 * Math.pow(2, attempt - 1);
+        console.log(`[${correlationId}] Network error, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
     }
-    
-    const data = JSON.parse(responseText);
-    return { success: true, data };
-    
-  } catch (error) {
-    console.error(`[${correlationId}] Luma API call failed:`, error);
-    return {
-      success: false,
-      error: `Luma API call failed: ${error.message}`
-    };
   }
+  
+  // All attempts failed
+  return {
+    success: false,
+    error: lastError?.status 
+      ? `Luma API returned ${lastError.status}: ${lastError.body}`
+      : `Network error after ${maxAttempts} attempts: ${lastError?.message || 'Unknown error'}`,
+    lumaError: lastError?.status ? lastError : undefined
+  };
 }
 
 serve(async (req) => {
@@ -415,7 +465,49 @@ serve(async (req) => {
 
     console.log('Created scene record:', scene.id);
 
-    // Prepare Luma Dream Machine v1 API payload
+    // Generate idempotency key from stable inputs
+    const idemInputs = {
+      userId: user.id,
+      folder: body.folder,
+      startKey: body.start_key,
+      endKey: body.end_key,
+      shotTypeId: body.shot_type_id,
+      prompt: shotType.prompt_template
+    };
+    const idemKey = createHash("sha256").update(JSON.stringify(idemInputs)).toString("hex");
+
+    // Validate keyframes URLs are accessible
+    if (!startFrameSignedUrl) {
+      await logError({
+        route: '/luma-create-scene',
+        method: 'POST',
+        status: 400,
+        code: 'INVALID_START_FRAME',
+        message: 'Failed to generate signed URL for start frame',
+        correlationId,
+        userId: user.id,
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: { 
+            code: 'INVALID_START_FRAME', 
+            message: 'Failed to generate signed URL for start frame',
+            correlationId 
+          },
+          ok: false 
+        }),
+        { status: 400, headers: responseHeaders }
+      );
+    }
+
+    // Prepare Luma Dream Machine v1 API payload with cleaned parameters
+    const modelParams = {
+      loop: false,
+      aspect_ratio: "16:9"
+    };
+    const cleanedParams = cleanParams("ray-flash-2", modelParams);
+    
     const lumaPayload = {
       prompt: shotType.prompt_template,
       model: "ray-flash-2",
@@ -431,8 +523,7 @@ serve(async (req) => {
           }
         } : {})
       },
-      loop: false,
-      aspect_ratio: "16:9"
+      ...cleanedParams
     };
 
     // Call Luma API
@@ -522,11 +613,12 @@ serve(async (req) => {
         data: {
           sceneId: scene.id,
           lumaJobId: lumaResult.data.id,
-          status: 'processing'
+          status: 'processing',
+          idempotencyKey: idemKey
         },
         ok: true 
       }),
-      { headers: responseHeaders }
+      { status: 200, headers: responseHeaders }
     );
 
   } catch (error) {
