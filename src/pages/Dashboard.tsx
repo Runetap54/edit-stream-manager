@@ -34,7 +34,7 @@ export default function Dashboard() {
     generationId: string;
     startFrameUrl: string;
     endFrameUrl?: string;
-    shotType: number;
+    shotType: string;
     status: 'processing' | 'ready' | 'error';
     videoUrl?: string;
     createdAt: Date;
@@ -228,7 +228,7 @@ export default function Dashboard() {
         generationId,
         startFrameUrl: sceneData.startFrameUrl,
         endFrameUrl: sceneData.endFrameUrl,
-        shotType: 1, // Legacy field for compatibility
+        shotType: sceneData.shotTypeId,
         status: 'processing' as const,
         createdAt: new Date()
       };

@@ -20,7 +20,7 @@ interface Scene {
   folder: string;
   start_key: string;
   end_key: string;
-  shot_type: number;
+  shot_type_id: string;
   status: string;
   created_at: string;
   start_frame_signed_url?: string;
@@ -34,7 +34,7 @@ interface SceneGeneration {
   scene_id: string;
   start_frame_url: string;
   end_frame_url: string | null;
-  shot_type: number;
+  shot_type_id: string;
   status: string;
   progress_pct: number | null;
   video_url: string | null;
@@ -54,7 +54,7 @@ interface VideoSectionProps {
     generationId: string;
     startFrameUrl: string;
     endFrameUrl?: string;
-    shotType: number;
+    shotType: string;
     status: 'processing' | 'ready' | 'error';
     videoUrl?: string;
     createdAt: Date;
@@ -237,7 +237,7 @@ export function VideoSection({
         sceneId: scene.id,
         startFrameUrl: latestGeneration?.start_frame_url || scene.start_frame_signed_url || scene.start_key,
         endFrameUrl: latestGeneration?.end_frame_url || scene.end_frame_signed_url || scene.end_key,
-        shotType: scene.shot_type
+        shotType: scene.shot_type_id
       };
 
       const response = await supabase.functions.invoke("create-scene", {
@@ -337,7 +337,7 @@ export function VideoSection({
         id: scene.id,
         startFrameUrl: latestGeneration?.start_frame_url || scene.start_frame_signed_url || scene.start_key,
         endFrameUrl: latestGeneration?.end_frame_url || scene.end_frame_signed_url || scene.end_key,
-        shotType: scene.shot_type,
+        shotType: scene.shot_type_id,
         status: latestGeneration?.status || scene.status,
         videoUrl: latestGeneration?.video_url,
         type: 'database' as const,

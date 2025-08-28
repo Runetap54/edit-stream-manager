@@ -365,7 +365,7 @@ serve(async (req) => {
         folder: body.folder,
         start_key: startFrameStoragePath,
         end_key: endFrameStoragePath,
-        shot_type: body.shot_type_id,
+        shot_type_id: body.shot_type_id,
         ordinal: nextOrdinal,
         version: 1,
         start_frame_signed_url: startFrameSignedUrl,
