@@ -10,9 +10,15 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const lumaApiKey = Deno.env.get("LUMA_API_KEY")!;
+// NOTE: keep your current key name if that's what you've set as a secret in Supabase.
+// If your real secret is LUMAAI_API_KEY, change this line accordingly.
+// const lumaApiKey = Deno.env.get("LUMAAI_API_KEY")!; // <-- if that's your actual secret name
+const lumaApiKey = Deno.env.get("LUMAAI_API_KEY")!; // [unchanged if this is what you use now]
 const lumaApiBase = Deno.env.get("LUMA_API_BASE") || "https://api.lumalabs.ai/dream-machine/v1";
 const signedUrlTtl = parseInt(Deno.env.get("SIGNED_URL_TTL_SECONDS") || "3600");
+
+// [NEW] default public bucket for keyframes; you said you named it "keyframes"
+const keyframesBucket = Deno.env.get("KEYFRAMES_PUBLIC_BUCKET") || "keyframes"; // [NEW]
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -69,6 +75,9 @@ function validateSceneRequest(body: any) {
   return errors;
 }
 
+// [REMOVED] Signed URL generator is no longer used for Luma ingestion,
+// but we keep it if you still store signed URLs in DB for your app.
+// You can delete this function later if not needed anywhere else.
 async function generateSignedUrl(storagePath: string): Promise<string | null> {
   try {
     const { data, error } = await supabase.storage
@@ -92,7 +101,6 @@ function cleanParams(model: string, params: Record<string, any> = {}) {
   // Allow only per-model fields; strip unsupported params that could cause 500s
   const allowed: Record<string, string[]> = {
     "ray-flash-2": ["aspect_ratio", "loop"],
-    // Add other models here as needed
   };
   const keep = allowed[model] ?? [];
   const out: Record<string, any> = {};
@@ -137,10 +145,16 @@ function toLumaPayload(input: {
   return out;
 }
 
+// [CHANGED] Make HEAD check more robust with 1-byte GET fallback
 async function headOk(url: string): Promise<boolean> {
   try {
-    const r = await fetch(url, { method: "HEAD" });
-    const ct = r.headers.get("content-type") ?? "";
+    let r = await fetch(url, { method: "HEAD" });
+    let ct = r.headers.get("content-type") ?? "";
+    if (r.ok && ct.startsWith("image/")) return true;
+
+    // [NEW] fallback: range GET for first byte (some CDNs don't return CT on HEAD)
+    r = await fetch(url, { headers: { Range: "bytes=0-0" } });
+    ct = r.headers.get("content-type") ?? "";
     return r.ok && ct.startsWith("image/");
   } catch { 
     return false; 
@@ -182,16 +196,13 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{
       try {
         parsedResponse = JSON.parse(responseText);
       } catch {
-        // Keep as string if not valid JSON
         parsedResponse = null;
       }
       
       if (response.ok) {
-        // 2xx from Luma → success
         return { success: true, data: parsedResponse ?? responseText };
       }
       
-      // Luma error - distinguish between 4xx (client) and 5xx (server)
       const lumaError = {
         status: response.status,
         body: responseText,
@@ -199,7 +210,6 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{
       };
       
       if (response.status >= 500) {
-        // Server error - retry with exponential backoff
         lastError = lumaError;
         if (attempt < maxAttempts) {
           const delay = 250 * Math.pow(2, attempt - 1); // 250ms, 500ms, 1000ms
@@ -208,7 +218,6 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{
           continue;
         }
       } else {
-        // 4xx client error - don't retry
         return {
           success: false,
           error: `Luma API returned ${response.status}: ${responseText}`,
@@ -229,7 +238,6 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{
     }
   }
   
-  // All attempts failed
   return {
     success: false,
     error: lastError?.status 
@@ -237,6 +245,33 @@ async function callLumaAPI(payload: any, correlationId: string): Promise<{
       : `Network error after ${maxAttempts} attempts: ${lastError?.message || 'Unknown error'}`,
     lumaError: lastError?.status ? lastError : undefined
   };
+}
+
+// [NEW] Mirror a private object from 'media' to the public 'keyframes' bucket and return a CDN URL
+async function mirrorToPublic(srcKey: string) { // [NEW]
+  const source = supabase.storage.from('media');
+  const target = supabase.storage.from(keyframesBucket);
+
+  // 1) download from private bucket
+  const dl = await source.download(srcKey);
+  if (dl.error) throw dl.error;
+  const blob = dl.data;
+  const buf = await blob.arrayBuffer();
+
+  // 2) create unguessable dest path
+  const ext = srcKey.split('.').pop()?.toLowerCase() || 'jpg';
+  const destKey = `ingest/${crypto.randomUUID()}.${ext}`;
+
+  // 3) upload to public bucket
+  const { error: upErr } = await target.upload(destKey, buf, {
+    contentType: blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg'),
+    upsert: true
+  });
+  if (upErr) throw upErr;
+
+  // 4) return public URL
+  const { data: pub } = target.getPublicUrl(destKey);
+  return { publicUrl: pub.publicUrl, destKey };
 }
 
 serve(async (req) => {
@@ -464,20 +499,24 @@ serve(async (req) => {
 
     const nextOrdinal = ordinalResult;
 
-    // Generate signed URLs for the images
+    // === KEYFRAME URL PREP ===
+    // Extract storage paths (still from your private 'media' bucket)
     const startFrameStoragePath = extractStoragePath(body.start_key);
     const endFrameStoragePath = body.end_key ? extractStoragePath(body.end_key) : null;
-    
-    const startFrameSignedUrl = await generateSignedUrl(startFrameStoragePath);
-    const endFrameSignedUrl = endFrameStoragePath ? await generateSignedUrl(endFrameStoragePath) : null;
 
-    console.log('Generated signed URLs:', {
-      startFrameSignedUrl,
-      endFrameSignedUrl,
+    // [CHANGED] Mirror to PUBLIC keyframes bucket and get **public CDN URLs**
+    const { publicUrl: startFrameUrl } = await mirrorToPublic(startFrameStoragePath); // [NEW/CHANGED]
+    const endMirror = endFrameStoragePath ? await mirrorToPublic(endFrameStoragePath) : null; // [NEW/CHANGED]
+    const endFrameUrl = endMirror?.publicUrl || null; // [NEW/CHANGED]
+
+    console.log('Public keyframe URLs generated:', { // [NEW]
+      startFrameUrl,
+      endFrameUrl,
       correlationId
     });
 
     // Insert scene record into database
+    // [CHANGED] Optionally store the public URLs instead of signed ones; keeping your field names for minimal impact.
     const { data: scene, error: sceneError } = await supabase
       .from('scenes')
       .insert({
@@ -489,9 +528,10 @@ serve(async (req) => {
         shot_type_id: body.shot_type_id,
         ordinal: nextOrdinal,
         version: 1,
-        start_frame_signed_url: startFrameSignedUrl,
-        end_frame_signed_url: endFrameSignedUrl,
-        signed_url_expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        // [CHANGED] store public URLs (you can rename columns later if you wish)
+        start_frame_signed_url: startFrameUrl, // [CHANGED]
+        end_frame_signed_url: endFrameUrl,     // [CHANGED]
+        signed_url_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // [CHANGED] 24h; irrelevant for public but harmless
         luma_status: 'pending',
         status: 'queued'
       })
@@ -531,33 +571,8 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    // Validate keyframes URLs are accessible
-    if (!startFrameSignedUrl) {
-      await logError({
-        route: '/luma-create-scene',
-        method: 'POST',
-        status: 400,
-        code: 'INVALID_START_FRAME',
-        message: 'Failed to generate signed URL for start frame',
-        correlationId,
-        userId: user.id,
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          error: { 
-            code: 'INVALID_START_FRAME', 
-            message: 'Failed to generate signed URL for start frame',
-            correlationId 
-          },
-          ok: false 
-        }),
-        { status: 400, headers: responseHeaders }
-      );
-    }
-
-    // Validate keyframe URLs are accessible (HEAD check)
-    if (!(await headOk(startFrameSignedUrl))) {
+    // Validate keyframe URLs are accessible (HEAD / GET-range)
+    if (!(await headOk(startFrameUrl))) { // [CHANGED]
       return new Response(
         JSON.stringify({ 
           error: { 
@@ -571,7 +586,7 @@ serve(async (req) => {
       );
     }
 
-    if (endFrameSignedUrl && !(await headOk(endFrameSignedUrl))) {
+    if (endFrameUrl && !(await headOk(endFrameUrl))) { // [CHANGED]
       return new Response(
         JSON.stringify({ 
           error: { 
@@ -585,39 +600,30 @@ serve(async (req) => {
       );
     }
 
-    // Prepare keyframes object
+    // Prepare keyframes object for Luma
     const keyframes: Record<string, { type: string; url: string }> = {
-      frame0: {
-        type: "image",
-        url: startFrameSignedUrl
-      }
+      frame0: { type: "image", url: startFrameUrl } // [CHANGED]
     };
-    
-    if (endFrameSignedUrl) {
-      keyframes.frame1 = {
-        type: "image", 
-        url: endFrameSignedUrl
-      };
+    if (endFrameUrl) {
+      keyframes.frame1 = { type: "image", url: endFrameUrl }; // [CHANGED]
     }
 
-    // Prepare provider payload with proper model mapping
+    // Prepare provider payload
     const providerBody: any = {
       prompt: shotType.prompt_template,
-      model: "ray-flash-2", // Use ray-flash-2 for Luma
+      model: "ray-flash-2",
       aspect_ratio: "16:9",
       keyframes
     };
 
-    // ❗ Remove loop when both keyframes are present (Luma restriction)
+    // Only add loop if single keyframe
     const hasF0 = !!providerBody?.keyframes?.frame0?.url;
     const hasF1 = !!providerBody?.keyframes?.frame1?.url;
-    
-    // Only add loop if we have single keyframe
     if (hasF0 && !hasF1) {
       providerBody.loop = false;
     }
 
-    // Strip unknown params to avoid silent 500s
+    // Strip unknown params
     const allowedTop = ["prompt", "model", "aspect_ratio", "duration", "quality", "keyframes", "loop"];
     for (const k of Object.keys(providerBody)) {
       if (!allowedTop.includes(k)) delete providerBody[k];
@@ -640,7 +646,6 @@ serve(async (req) => {
         })
         .eq('id', scene.id);
 
-      // Determine specific error code based on Luma API response
       let errorCode = 'LUMA_API_ERROR';
       let userMessage = 'Scene generation failed';
       
@@ -655,7 +660,7 @@ serve(async (req) => {
           userMessage = 'Luma API quota exceeded. Please try again later.';
         } else if (status === 400) {
           errorCode = 'LUMA_VALIDATION_ERROR';
-          userMessage = parsed?.detail || parsed?.message || 'Invalid request to Luma API';
+          userMessage = parsed?.detail || parsed?.message || 'Invalid request to Luma API.';
         } else if (status >= 500) {
           errorCode = 'LUMA_SERVER_ERROR';
           userMessage = 'Luma API server error. Please try again later.';
@@ -670,6 +675,8 @@ serve(async (req) => {
         message: lumaResult.error || 'Luma API call failed',
         correlationId,
         userId: user.id,
+        // [NEW] include safe context for debugging
+        safeContext: { payloadPreview: { ...providerBody, keyframes: undefined } }
       });
       
       return new Response(
@@ -682,7 +689,7 @@ serve(async (req) => {
             upstream: lumaResult.lumaError ? {
               endpoint: 'Luma API',
               status: lumaResult.lumaError.status,
-              bodySnippet: lumaResult.lumaError.body.substring(0, 200)
+              bodySnippet: lumaResult.lumaError.body?.substring?.(0, 200)
             } : undefined
           },
           ok: false 
@@ -713,6 +720,7 @@ serve(async (req) => {
         data: {
           sceneId: scene.id,
           lumaJobId: lumaResult.data.id,
+        // status mirrors your DB row
           status: 'processing',
           idempotencyKey: idemKey
         },
@@ -727,7 +735,7 @@ serve(async (req) => {
       method: 'POST',
       status: 500,
       code: 'INTERNAL_ERROR',
-      message: error.message,
+      message: (error as Error).message,
       correlationId,
     });
     
