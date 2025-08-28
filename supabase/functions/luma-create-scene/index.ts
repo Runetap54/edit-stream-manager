@@ -247,11 +247,16 @@ serve(async (req) => {
   const correlationId = generateCorrelationId();
   const responseHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
+  console.log(`[${correlationId}] === NEW REQUEST ===`);
+  console.log(`[${correlationId}] Method: ${req.method}`);
+  console.log(`[${correlationId}] URL: ${req.url}`);
+
   try {
     // Parse and validate request
     let body;
     try {
       body = await req.json();
+      console.log(`[${correlationId}] 🔍 REQUEST BODY:`, JSON.stringify(body, null, 2));
     } catch (parseError) {
       await logError({
         route: '/luma-create-scene',
@@ -595,21 +600,19 @@ serve(async (req) => {
       };
     }
 
-    // Use the provider mapping function
-    const lumaPayload = toLumaPayload({
+    // Prepare provider payload with proper model mapping
+    const providerBody = {
       prompt: shotType.prompt_template,
-      model_code: "ray-flash-2",
-      params: {
-        aspect_ratio: "16:9",
-        loop: false
-      },
+      model: "ray-flash-2", // Use ray-flash-2 for Luma
+      aspect_ratio: "16:9",
+      loop: false,
       keyframes
-    });
+    };
 
-    console.log(`[${correlationId}] Final Luma payload:`, JSON.stringify(lumaPayload, null, 2));
+    console.log(`[${correlationId}] 📤 LUMA REQUEST PAYLOAD:`, JSON.stringify(providerBody, null, 2));
 
     // Call Luma API
-    const lumaResult = await callLumaAPI(lumaPayload, correlationId);
+    const lumaResult = await callLumaAPI(providerBody, correlationId);
     
     if (!lumaResult.success) {
       // Update scene with error
