@@ -6,23 +6,20 @@ verify_jwt = false
 [functions.admin-action]
 verify_jwt = false
 
-[functions.luma-create-scene]
+[functions.n8n-callback]
+verify_jwt = false
+
+[functions.create-scene]
 verify_jwt = true
 
-[functions.luma-scene-status]
+[functions.scene-status]
+verify_jwt = false
+
+[functions.projects-from-storage]
 verify_jwt = true
 
-[functions.shot-types]
+[functions.photos-from-storage]
 verify_jwt = true
 
-[functions.photos]
-verify_jwt = true
-
-[functions.delete-photo]
-verify_jwt = true
-
-[functions.delete-project]
-verify_jwt = true
-
-[functions.delete-scene]
+[functions.storage-sync]
 verify_jwt = true

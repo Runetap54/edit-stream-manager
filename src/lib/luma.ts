@@ -1,18 +1,8 @@
 type CreateReq = {
   prompt: string;
+  resolution: "1080p";
   model: "ray-flash-2";
-  keyframes: {
-    frame0: {
-      type: "image";
-      url: string;
-    };
-    frame1?: {
-      type: "image";
-      url: string;
-    };
-  };
-  loop?: boolean;
-  aspect_ratio?: string;
+  loop?: false;
 };
 
 type CreateRes = { 
@@ -30,7 +20,7 @@ type StatusRes = {
 const BASE = `${process.env.LUMA_API_BASE}`;
 
 export async function lumaCreate(body: CreateReq): Promise<CreateRes> {
-  const r = await fetch(BASE, {
+  const r = await fetch(`${BASE}/generations`, {
     method: "POST",
     headers: {
       "authorization": `Bearer ${process.env.LUMA_API_KEY}`,
@@ -51,7 +41,7 @@ export async function lumaStatus(id: string): Promise<StatusRes> {
 }
 
 export const DEFAULTS = {
+  resolution: "1080p" as const,
   model: "ray-flash-2" as const,
   loop: false as const,
-  aspect_ratio: "16:9" as const,
 };

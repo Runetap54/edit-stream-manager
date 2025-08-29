@@ -183,7 +183,7 @@ export type Database = {
           generation_id: string
           progress_pct: number | null
           scene_id: string
-          shot_type_id: string
+          shot_type: number
           start_frame_url: string
           status: string
           updated_at: string
@@ -197,7 +197,7 @@ export type Database = {
           generation_id?: string
           progress_pct?: number | null
           scene_id: string
-          shot_type_id: string
+          shot_type: number
           start_frame_url: string
           status?: string
           updated_at?: string
@@ -211,21 +211,13 @@ export type Database = {
           generation_id?: string
           progress_pct?: number | null
           scene_id?: string
-          shot_type_id?: string
+          shot_type?: number
           start_frame_url?: string
           status?: string
           updated_at?: string
           video_url?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "scene_generations_shot_type_id_fkey"
-            columns: ["shot_type_id"]
-            isOneToOne: false
-            referencedRelation: "shot_types"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       scene_versions: {
         Row: {
@@ -275,7 +267,7 @@ export type Database = {
           luma_status: string | null
           ordinal: number | null
           project_id: string | null
-          shot_type_id: string
+          shot_type: number
           signed_url_expires_at: string | null
           start_frame_signed_url: string | null
           start_key: string
@@ -296,7 +288,7 @@ export type Database = {
           luma_status?: string | null
           ordinal?: number | null
           project_id?: string | null
-          shot_type_id: string
+          shot_type: number
           signed_url_expires_at?: string | null
           start_frame_signed_url?: string | null
           start_key: string
@@ -317,7 +309,7 @@ export type Database = {
           luma_status?: string | null
           ordinal?: number | null
           project_id?: string | null
-          shot_type_id?: string
+          shot_type?: number
           signed_url_expires_at?: string | null
           start_frame_signed_url?: string | null
           start_key?: string
@@ -327,13 +319,6 @@ export type Database = {
           version?: number
         }
         Relationships: [
-          {
-            foreignKeyName: "scenes_shot_type_id_fkey"
-            columns: ["shot_type_id"]
-            isOneToOne: false
-            referencedRelation: "shot_types"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "scenes_user_id_fkey"
             columns: ["user_id"]

@@ -20,7 +20,7 @@ interface Scene {
   folder: string;
   start_key: string;
   end_key: string;
-  shot_type_id: string;
+  shot_type: number;
   status: string;
   created_at: string;
   start_frame_signed_url?: string;
@@ -34,7 +34,7 @@ interface SceneGeneration {
   scene_id: string;
   start_frame_url: string;
   end_frame_url: string | null;
-  shot_type_id: string;
+  shot_type: number;
   status: string;
   progress_pct: number | null;
   video_url: string | null;
@@ -54,7 +54,7 @@ interface VideoSectionProps {
     generationId: string;
     startFrameUrl: string;
     endFrameUrl?: string;
-    shotType: string;
+    shotType: number;
     status: 'processing' | 'ready' | 'error';
     videoUrl?: string;
     createdAt: Date;
@@ -94,7 +94,7 @@ export function VideoSection({
               event: '*',
               schema: 'public',
               table: 'scenes',
-              filter: `user_id=eq.${user.id}&folder=eq.${folder}`
+              filter: `user_id=eq.${user.id}`
             },
             () => {
               loadDbScenes();
@@ -141,7 +141,6 @@ export function VideoSection({
           *
         `)
         .eq("user_id", user.id)
-        .eq("folder", folder)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
@@ -155,20 +154,7 @@ export function VideoSection({
       const sceneIds = scenesData?.map(s => s.id) || [];
       const { data: generationsData, error: generationsError } = await supabase
         .from("scene_generations")
-        .select(`
-          generation_id,
-          scene_id,
-          start_frame_url,
-          end_frame_url,
-          shot_type_id,
-          status,
-          progress_pct,
-          video_url,
-          error_code,
-          error_message,
-          created_at,
-          updated_at
-        `)
+        .select("*")
         .in("scene_id", sceneIds)
         .order("created_at", { ascending: false });
 
@@ -250,7 +236,7 @@ export function VideoSection({
         sceneId: scene.id,
         startFrameUrl: latestGeneration?.start_frame_url || scene.start_frame_signed_url || scene.start_key,
         endFrameUrl: latestGeneration?.end_frame_url || scene.end_frame_signed_url || scene.end_key,
-        shotType: scene.shot_type_id
+        shotType: scene.shot_type
       };
 
       const response = await supabase.functions.invoke("create-scene", {
@@ -350,7 +336,7 @@ export function VideoSection({
         id: scene.id,
         startFrameUrl: latestGeneration?.start_frame_url || scene.start_frame_signed_url || scene.start_key,
         endFrameUrl: latestGeneration?.end_frame_url || scene.end_frame_signed_url || scene.end_key,
-        shotType: scene.shot_type_id,
+        shotType: scene.shot_type,
         status: latestGeneration?.status || scene.status,
         videoUrl: latestGeneration?.video_url,
         type: 'database' as const,
@@ -386,38 +372,25 @@ export function VideoSection({
               <Video className="w-5 h-5" />
               <span>Video Scenes</span>
             </CardTitle>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Create new project - this will be handled by parent
-                  window.location.href = '/dashboard';
-                }}
-                className="text-sm"
-              >
-                New Project
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="hidden md:inline-flex"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export All
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden md:inline-flex"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export All
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="grid grid-cols-4 gap-3 max-2-[360px] overflow-y-auto pr-2">
-              {Array.from({ length: 12 }).map((_, i) => (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-square w-full" />
               ))}
             </div>
           ) : allScenes.length > 0 ? (
-            <div className="grid grid-cols-6 gap-3 max-h-[320px] overflow-y-auto pr-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {allScenes.map((scene) => (
                 <div
                   key={scene.id}
@@ -441,14 +414,12 @@ export function VideoSection({
                   </div>
 
                   {/* Thumbnail */}
-                 // inside SceneCard
-                  <div className="rounded-md border bg-card p-2">
-                        <div className="relative w-full h-36 overflow-hidden rounded">
-                          {/* video/preview thumb */}
-                      </div>
-                        {/* ...badges/buttons... */}
-                    </div>
-
+                  {scene.startFrameUrl ? (
+                    <img 
+                      src={scene.startFrameUrl} 
+                      alt={`Scene ${scene.sceneNumber} preview`}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full bg-muted flex items-center justify-center">
                       <Video className="w-8 h-8 text-muted-foreground" />

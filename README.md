@@ -1,96 +1,111 @@
-VideoStream – Professional Video Scene Creation Dashboard
+# VideoStream - Professional Video Scene Creation Dashboard
 
-A modern video production platform built with React, Vite, Tailwind CSS, and Supabase.
-Transform uploaded photo folders into professional video scenes with AI-powered generation, version management, and an intuitive dashboard.
+A comprehensive video production platform built with React, Vite, Tailwind CSS, and Supabase. Transform photo folders into professional video scenes with AI-powered workflows, complete with admin approval, version management, and team collaboration.
 
-🚀 Features
-Core Functionality
+![VideoStream Dashboard](src/assets/hero-video-editing.jpg)
 
-Smart Upload Panel: Drag & drop folder uploads with automatic renaming (projectname1.jpeg, projectname2.jpeg, etc).
+## 🚀 Features
 
-Photo Grid Interface: Browse and select start/end frames with cinematic shot types.
+### Core Functionality
+- **Smart Upload Panel**: Drag & drop folder uploads with automatic organization
+- **Photo Grid Interface**: Select start/end frames with 6 cinematic shot types
+- **AI Scene Generation**: Integration with n8n workflows for video processing
+- **Version Management**: Track, regenerate, and manage scene versions
+- **Bulk Export**: Download all scenes in organized ZIP packages
+- **Real-time Updates**: Live scene status updates via Supabase Realtime
 
-AI Scene Generation: Direct integration with Luma Labs API (LUMAAI_API_KEY) for scene creation. Scenes are saved into structured Supabase storage.
+### Admin & Security
+- **Admin Approval Workflow**: Email-based user approval system
+- **Gmail SMTP Integration**: Automated approval notifications
+- **Secure Processing**: HMAC-signed webhook integrations
+- **Row Level Security**: Database-level access control
+- **User Authentication**: Complete signup/signin flow with profile management
 
-Scene Management: Regenerate, track, and highlight versions with linked photos and previews.
+### Keyboard Shortcuts
+- `S` - Mark start frame
+- `E` - Mark end frame  
+- `1-6` - Select shot types (Wide, Medium, Close-up, Extreme Close-up, Over Shoulder, POV)
+- `R` - Regenerate scene
+- `Del` - Delete scene
+- `Ctrl+Z` - Undo last delete (10s window)
+- `Ctrl/Cmd+E` - Export all scenes
 
-Bulk Export: Download all finished scenes in organized ZIP packages.
+## 🛠 Tech Stack
 
-Real-Time Updates: Live updates to photo grid, scene grid, and video previews via Supabase Realtime.
+- **Frontend**: React 18, TypeScript, Vite
+- **Styling**: Tailwind CSS, shadcn/ui components
+- **Backend**: Supabase (Database, Auth, Storage, Edge Functions)
+- **File Upload**: Uppy Dashboard with folder support
+- **Email**: Gmail SMTP with Nodemailer
+- **Webhooks**: n8n integration with HMAC security
+- **Real-time**: Supabase Realtime subscriptions
 
-User & Data Management
+## 📋 Prerequisites
 
-Supabase Auth: Email confirmation required for account activation.
+Before setting up, ensure you have:
 
-Per-User Media Buckets: Each user has dedicated photos/ and scenes/ folders created upon signup.
+1. **Node.js & npm** - [Install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+2. **Supabase Project** - [Create at supabase.com](https://supabase.com)
+3. **Gmail App Password** - [Setup instructions below](#gmail-setup)
+4. **n8n Instance** - For video processing workflows
 
-Account Deletion: Users can delete accounts; media is preserved in a separate deleted_users/ archive folder.
+## 🔧 Environment Setup
 
-User API Keys: Support for per-user AI API keys (hashed with SHA-256 before storage, never stored in plain text).
+### 1. Supabase Configuration
 
-Model Flexibility: Dropdown selectors for Luma Labs models, automatically updated as new options are supported.
+The project requires these environment variables (already configured in Supabase):
 
-Keyboard Shortcuts
+```bash
+SUPABASE_URL=https://fmizfozbyrohydcutkgg.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
 
-S – Mark start frame
+### 2. Gmail SMTP Setup
 
-E – Mark end frame
+1. **Enable 2-Factor Authentication** on your Gmail account
+2. **Generate App Password**:
+   - Go to Google Account settings
+   - Security → 2-Step Verification → App passwords
+   - Generate password for "Mail"
+3. **Add to Supabase Secrets**:
+   - `SMTP_USER`: hello@panhandle-ai.com
+   - `SMTP_PASS`: 
 
-1-6 – Select shot types (Wide, Medium, Close-up, Extreme Close-up, Over Shoulder, POV)
+### 3. n8n Webhook Secret
 
-R – Regenerate scene
+Generate a secure webhook secret for n8n communication:
+- `N8N_WEBHOOK_SECRET`: [Random secure string]
 
-Del – Delete scene
+## 🗄 Database Setup
 
-Ctrl+Z – Undo last delete (10s window)
+### 1. Run Migrations
 
-Ctrl/Cmd+E – Export all scenes
+The database schema is already deployed with:
 
-🛠 Tech Stack
+- `profiles` - User management with approval status
+- `admin_approvals` - Email approval token management  
+- `scenes` - Video scene metadata
+- `scene_versions` - Version tracking and video URLs
+- `storage.objects` - File storage with RLS policies
 
-Frontend: React 18, TypeScript, Vite
+### 2. Create First Admin
 
-Styling: Tailwind CSS, shadcn/ui components
+```sql
+-- Replace with your admin email and user ID
+insert into public.profiles (id, email, role, status)
+values ('<your-uuid>', 'hello@panhandle-ai.com', 'admin', 'approved')
+on conflict (id) do update set role='admin', status='approved';
+```
 
-Backend: Supabase (Database, Auth, Storage, Edge Functions)
+### 3. Configure Auth Settings
 
-File Uploads: Uppy Dashboard with folder support
+In Supabase Dashboard → Authentication → URL Configuration:
+- **Site URL**: `https://your-app-domain.com`  
+- **Redirect URLs**: Add your deployed domain
 
-AI Integration: Luma Labs Dream Machine API
+## 🚀 Installation & Development
 
-📋 Prerequisites
-
-Node.js & npm
-
-Supabase Project (create at supabase.com
-)
-
-Luma Labs API Key (LUMAAI_API_KEY)
-
-🔧 Environment Setup
-SUPABASE_URL=<your-supabase-url>
-SUPABASE_ANON_KEY=<anon-key>
-SUPABASE_SERVICE_ROLE=<service-role-key>
-LUMAAI_API_KEY=<your-luma-api-key>
-
-🗄 Database Setup
-Tables
-
-profiles – Users with email confirmation + metadata
-
-scenes – Scene definitions (linked to start/end frames)
-
-scene_versions – Scene version history with video URLs
-
-storage.objects – Supabase bucket objects with RLS
-
-RLS (Row-Level Security)
-
-Users can only read/write their own files in photos/ and scenes/.
-
-Deleted users’ media is automatically moved to deleted_users/.
-
-🚀 Installation & Development
+```bash
 # Clone the repository
 git clone <your-repo-url>
 cd videostream-dashboard
@@ -100,74 +115,130 @@ npm install
 
 # Start development server
 npm run dev
+```
 
+The app will be available at `http://localhost:8080`
 
-App available at: https://edit-stream-manager.vercel.app/dashboard?sceneId=6c188c71-b877-4f5b-a877-f5f810783da1
+## 📦 Deployment
 
-📦 Deployment
+### Deploy to Vercel
 
-Deploy with Vercel, Netlify, or Render.
+1. **Connect Repository**: Link your GitHub repo to Vercel
+2. **Configure Environment**: Vercel will use Supabase environment variables
+3. **Deploy**: Automatic deployment on push to main branch
 
-Add Supabase environment variables in project settings.
+### Custom Domain Setup
 
-Configure Supabase Auth redirect URLs to match your domain.
+1. **Add Domain** in Vercel dashboard
+2. **Update Supabase**: Add custom domain to redirect URLs
+3. **Update n8n**: Point webhooks to new domain
 
-🔒 Security Features
+## 🔗 API Integration
 
-Supabase Auth with email confirmation
+### n8n Webhook URLs
 
-Per-user bucket isolation via RLS
+Configure these endpoints in your n8n workflows:
 
-SHA-256 hashing for sensitive keys (user API keys never stored in plain text)
+```
+Upload Complete: POST /api/upload/complete
+Scene Render: POST /api/scenes/{id}/complete  
+Admin Approval: GET /api/admin/approve?token={token}
+Admin Rejection: GET /api/admin/reject?token={token}
+```
 
-Signed URLs for media access
+### HMAC Signature Verification
 
-Input validation with Zod
+All n8n webhooks must include `X-Hub-Signature-256` header:
 
-📖 Usage Guide
-For Users
+```javascript
+const signature = crypto
+  .createHmac('sha256', process.env.N8N_WEBHOOK_SECRET)
+  .update(payload)
+  .digest('hex');
+```
 
-Sign up with email → confirm account
+## 📖 Usage Guide
 
-Upload photo folders
+### For End Users
 
-Select start/end frames + shot type
+1. **Sign Up**: Create account at `/auth` 
+2. **Wait for Approval**: Admin receives email notification
+3. **Upload Photos**: Use drag & drop interface
+4. **Create Scenes**: Select frames and shot types
+5. **Export Videos**: Download finished scenes as ZIP
 
-Generate scenes (Luma Labs API)
+### For Admins
 
-Export final videos
+1. **Approve Users**: Click email links to approve/reject
+2. **Monitor Activity**: View all user profiles in dashboard
+3. **Manage Scenes**: Access to all user-generated content
 
-File Organization
+### File Organization
+
+```
 media/
 ├── {user-id}/
-│   ├── photos/
-│   └── scenes/
-├── deleted/
-│   ├── {former-user-id}/
-│   │   ├── photos/
-│   │   └── scenes/
+│   ├── {folder-name}/
+│   │   ├── photo1.jpg
+│   │   ├── photo2.jpg
+│   │   └── ...
+│   └── ...
+└── ...
+```
 
-🐛 Troubleshooting
+## 🔒 Security Features
 
-Upload Fails
+- **Row Level Security**: Database access control
+- **HMAC Webhooks**: Secure n8n communication  
+- **JWT Authentication**: Supabase session management
+- **Admin Approval**: Gated access to platform
+- **Signed URLs**: Temporary file access
+- **Input Validation**: Server-side data validation
 
-Ensure image formats are supported
+## 🐛 Troubleshooting
 
-Check Supabase bucket permissions
+### Common Issues
 
-Scene Generation Issues
+**"Account Pending" Error**
+- Ensure admin has approved your account
+- Check email for approval confirmation
 
-Verify LUMAAI_API_KEY is valid
+**Upload Failures**
+- Verify file types are images/videos
+- Check storage quota in Supabase
+- Ensure bucket policies are correct
 
-Check Supabase Edge Function logs
+**Email Not Sending**
+- Verify Gmail App Password is correct
+- Check SMTP settings in edge function
+- Ensure admin email is configured
 
-Account Pending
+**n8n Integration Issues**  
+- Verify webhook URLs are accessible
+- Check HMAC signature implementation
+- Monitor edge function logs
 
-Confirm email verification is complete
+### Debug Logs
 
-🔄 Version History
+Check Supabase Edge Function logs:
+- Functions → [function-name] → Logs
+- Look for error messages and stack traces
 
-v1.0.0 – Initial refactor: Removed n8n + Gmail SMTP, replaced with direct Luma Labs API integration.
+## 📞 Support
 
-Built with ❤️ using React, Supabase, and Tailwind.
+For technical support or feature requests:
+- Email: hello@panhandle-ai.com
+- Check edge function logs in Supabase dashboard
+- Review database RLS policies for access issues
+
+## 🔄 Version History
+
+- **v1.0.0** - Initial release with core functionality
+- Complete upload/scene generation workflow
+- Admin approval system
+- Real-time updates
+- Export functionality
+
+---
+
 Built with ❤️ using Lovable, React, and Supabase

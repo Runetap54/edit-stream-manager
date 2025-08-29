@@ -3,14 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { User } from "@supabase/supabase-js";
-import { useHotkeys } from "react-hotkeys-hook";
 
 import { PhotoGrid } from "@/components/dashboard/PhotoGrid";
 import { VideoSection } from "@/components/dashboard/VideoSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { ProjectDropdown } from "@/components/dashboard/ProjectDropdown";
-import { Button } from "@/components/ui/button";
-import { Loader2, Play } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
 
 interface Profile {
@@ -35,7 +33,7 @@ export default function Dashboard() {
     generationId: string;
     startFrameUrl: string;
     endFrameUrl?: string;
-    shotType: string;
+    shotType: number;
     status: 'processing' | 'ready' | 'error';
     videoUrl?: string;
     createdAt: Date;
@@ -199,14 +197,29 @@ export default function Dashboard() {
     const sceneId = crypto.randomUUID();
     const generationId = crypto.randomUUID();
     
+    // Create immediate scene card with processing state
+    const newScene = {
+      sceneId,
+      generationId,
+      startFrameUrl: sceneData.startFrameUrl,
+      endFrameUrl: sceneData.endFrameUrl,
+      shotType: 1, // Legacy field for compatibility
+      status: 'processing' as const,
+      createdAt: new Date()
+    };
+    
+    setScenes(prev => [newScene, ...prev]);
+    
+    // Auto-select the new scene by updating URL
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('sceneId', sceneId);
+    window.history.replaceState({}, '', `${window.location.pathname}?${searchParams}`);
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error("Please sign in to generate scenes");
       }
-
-      // Show loading toast
-      toast.loading("Starting scene generation...", { id: sceneId });
 
       const requestBody = {
         folder: currentProject,
@@ -223,52 +236,26 @@ export default function Dashboard() {
         throw response.error;
       }
 
-      // Only create scene card AFTER successful API response
-      const newScene = {
-        sceneId,
-        generationId,
-        startFrameUrl: sceneData.startFrameUrl,
-        endFrameUrl: sceneData.endFrameUrl,
-        shotType: sceneData.shotTypeId,
-        status: 'processing' as const,
-        createdAt: new Date()
-      };
-      
-      setScenes(prev => [newScene, ...prev]);
-      
-      // Auto-select the new scene by updating URL
-      const searchParams = new URLSearchParams(window.location.search);
-      searchParams.set('sceneId', sceneId);
-      window.history.replaceState({}, '', `${window.location.pathname}?${searchParams}`);
-
       toast.success("Scene generation started!", {
-        id: sceneId,
         description: `Scene ID: ${sceneId.slice(0, 8)}...`
       });
     } catch (error: any) {
       console.error("Error generating scene:", error);
-      toast.error(error.message || "Failed to generate scene", { id: sceneId });
+      
+      // Update scene status to error
+      setScenes(prev => prev.map(scene => 
+        scene.generationId === generationId 
+          ? { ...scene, status: 'error' as const }
+          : scene
+      ));
+      
+      toast.error(error.message || "Failed to generate scene");
     }
   };
 
   const handleShotTypeSelect = (shotTypeId: string) => {
     setSelectedShotTypeId(shotTypeId);
   };
-
-  // Add hotkey for Enter to generate scene when photos are selected
-  const canGenerateScene = selectedStart && selectedShotTypeId;
-  useHotkeys(['enter'], () => {
-    if (canGenerateScene) {
-      handleSceneGenerate({
-        startFrameUrl: selectedStart,
-        endFrameUrl: selectedEnd,
-        shotTypeId: selectedShotTypeId!
-      });
-    }
-  }, {
-    enabled: !!canGenerateScene,
-    preventDefault: true
-  });
 
   if (loading) {
     return (
@@ -298,24 +285,7 @@ export default function Dashboard() {
           />
         </div>
         
-        {/* Shot Type Row - Full width above main content */}
-        {currentProject && (
-          <div className="bg-card border rounded-lg p-4">
-            <PhotoGrid
-              projectName=""
-              selectedStart=""
-              selectedEnd=""
-              selectedShotTypeId={selectedShotTypeId}
-              onPhotoSelect={() => {}}
-              onShotTypeSelect={handleShotTypeSelect}
-              onSceneGenerate={() => {}}
-              onUploadComplete={() => {}}
-              renderShotTypesOnly={true}
-            />
-          </div>
-        )}
-        
-        {/* Main Content Grid - Photo grid on left, video section takes remaining space */}
+        {/* Main Content Grid - Equal columns */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Photo Grid with integrated upload - Takes up 1 column */}
           <div className="space-y-4">
@@ -328,31 +298,11 @@ export default function Dashboard() {
               onShotTypeSelect={handleShotTypeSelect}
               onSceneGenerate={handleSceneGenerate}
               onUploadComplete={handleUploadComplete}
-              hideShotTypes={true}
             />
-            
-            {/* Generate Scene Button underneath photo grid */}
-            {currentProject && (
-              <div className="flex justify-center">
-                <Button
-                  onClick={() => handleSceneGenerate({
-                    startFrameUrl: selectedStart,
-                    endFrameUrl: selectedEnd,
-                    shotTypeId: selectedShotTypeId!
-                  })}
-                  disabled={!selectedStart || !selectedShotTypeId}
-                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90 px-8 py-3"
-                  size="lg"
-                >
-                  <Play className="w-5 h-5 mr-2" />
-                  Generate Scene {canGenerateScene && "(Press Enter)"}
-                </Button>
-              </div>
-            )}
           </div>
           
           {/* Video Section - Takes up 1 column */}
-          <div className="space-y-2">
+          <div className="space-y-4">
             <VideoSection
               folder={currentProject}
               selectedStart={selectedStart}
